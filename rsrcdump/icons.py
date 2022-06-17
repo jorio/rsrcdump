@@ -1,9 +1,13 @@
+from typing import Callable, List
+
 from io import BytesIO
-from rsrcdump.packutils import Unpacker
-from rsrcdump.palettes import clut4, clut8
 from struct import pack
 
-def convert_icon_to_bgra(bw_mask, width, height, get_pixel):
+from rsrcdump.packutils import Unpacker
+from rsrcdump.palettes import clut4, clut8
+
+def convert_icon_to_bgra(bw_mask: bytes, width: int, height: int,
+                         get_pixel: Callable[[int, int], int]) -> bytes:
     icon = BytesIO()
     u_mask = Unpacker(bw_mask)
 
@@ -26,22 +30,25 @@ def convert_icon_to_bgra(bw_mask, width, height, get_pixel):
 
     return icon.getvalue()
 
-def convert_8bit_icon_to_bgra(color_icon, bw_mask, width, height):
-    def getpixel8(x, y):
-        pixel = color_icon[y * width + x]
+def convert_8bit_icon_to_bgra(color_icon: bytes, bw_mask: bytes,
+                              width: int, height: int) -> bytes:
+    def getpixel8(x: int, y: int) -> int:
+        pixel: int = color_icon[y * width + x]
         return clut8[pixel]
     return convert_icon_to_bgra(bw_mask, width, height, getpixel8)
 
-def convert_4bit_icon_to_bgra(color_icon, bw_mask, width, height):
-    def getpixel4(x, y):
-        pixel = color_icon[y * (width>>1) + (x>>1)]
+def convert_4bit_icon_to_bgra(color_icon: bytes, bw_mask: bytes,
+                              width: int, height: int) -> bytes:
+    def getpixel4(x: int, y: int) -> int:
+        pixel: int = color_icon[y * (width>>1) + (x>>1)]
         if 0 == (x & 1):
             pixel >>= 4
         pixel &= 0x0F
         return clut4[pixel]
     return convert_icon_to_bgra(bw_mask, width, height, getpixel4)
 
-def convert_1bit_icon_to_bgra(bw_data, bw_mask, width, height):
+def convert_1bit_icon_to_bgra(bw_data: bytes, bw_mask: bytes,
+                              width: int, height: int) -> bytes:
     icon = BytesIO()
     u_data = Unpacker(bw_data)
     u_mask = Unpacker(bw_mask)

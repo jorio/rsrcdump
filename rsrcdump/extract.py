@@ -1,16 +1,24 @@
+from typing import Dict, List, Union
+
 import os
 import base64
 import json
+
 from rsrcdump.resconverters import converters
 from rsrcdump.textio import sanitize_type_name, sanitize_resource_name
+from rsrcdump.resfork import Resource
 
-def extract_resource_map(res_map, outpath, include_types=[], exclude_types=[], quiet=False):
+def extract_resource_map(res_map: Dict[bytes, Dict[int, Resource]],
+                         outpath: str,
+                         include_types: List[bytes]=[],
+                         exclude_types: List[bytes]=[],
+                         quiet: bool=False) -> None:
     try:
         os.mkdir(outpath)
     except FileExistsError:
         pass
 
-    J = {}
+    J: Dict[str, Dict[int, Dict[str, Union[int, str]]]] = {}
     for res_type, res_dir in res_map.items():
         res_type_key = res_type.decode('macroman')
 
@@ -38,7 +46,7 @@ def extract_resource_map(res_map, outpath, include_types=[], exclude_types=[], q
             else:
                 obj = res.data
 
-            wrapper = {}
+            wrapper: Dict[str, Union[int, str]] = {}
             
             if res.name:
                 wrapper['name'] = res.name.decode('macroman')
@@ -70,7 +78,7 @@ def extract_resource_map(res_map, outpath, include_types=[], exclude_types=[], q
 
             J[res_type_key][res_id] = wrapper
 
-    with open(outpath + "/index.json", 'w') as file:
+    with open(outpath + "/index.json", 'w', encoding='utf-8') as file:
         file.write(json.dumps(J, indent='\t'))
 
         if not quiet:

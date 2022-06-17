@@ -1,24 +1,28 @@
+from typing import Optional, Final
+from types import TracebackType
+
 import math
 import io
-from rsrcdump.packutils import Unpacker, WritePlaceholder, pack_pstr
 from dataclasses import dataclass
 from struct import pack
 
-kSoundResourceType_Standard     = 0x0001
-kSoundResourceType_HyperCard    = 0x0002
+from rsrcdump.packutils import Unpacker, WritePlaceholder, pack_pstr
 
-kSampledSoundEncoding_stdSH     = 0x00      # standard sound header (noncompressed 8-bit mono sample data)
-kSampledSoundEncoding_cmpSH     = 0xFE      # compressed sound header
-kSampledSoundEncoding_extSH     = 0xFF      # extended sound header (noncompressed 8/16-bit mono or stereo)
+kSoundResourceType_Standard: Final     = 0x0001
+kSoundResourceType_HyperCard: Final    = 0x0002
 
-initChanLeft                    = 0x0002    # left stereo channel
-initChanRight                   = 0x0003    # right stereo channel
-initMono                        = 0x0080    # monophonic channel
-initStereo                      = 0x00C0    # stereo channel
-initMACE3                       = 0x0300    # 3:1 compression
-initMACE6                       = 0x0400    # 6:1 compression
-initNoInterp                    = 0x0004    # no linear interpolation
-initNoDrop                      = 0x0008    # no drop-sample conversion
+kSampledSoundEncoding_stdSH: Final     = 0x00      # standard sound header (noncompressed 8-bit mono sample data)
+kSampledSoundEncoding_cmpSH: Final     = 0xFE      # compressed sound header
+kSampledSoundEncoding_extSH: Final     = 0xFF      # extended sound header (noncompressed 8/16-bit mono or stereo)
+
+initChanLeft: Final                    = 0x0002    # left stereo channel
+initChanRight: Final                   = 0x0003    # right stereo channel
+initMono: Final                        = 0x0080    # monophonic channel
+initStereo: Final                      = 0x00C0    # stereo channel
+initMACE3: Final                       = 0x0300    # 3:1 compression
+initMACE6: Final                       = 0x0400    # 6:1 compression
+initNoInterp: Final                    = 0x0004    # no linear interpolation
+initNoDrop: Final                      = 0x0008    # no drop-sample conversion
 
 @dataclass
 class CodecInfo:
@@ -27,7 +31,7 @@ class CodecInfo:
     bytes_per_packet: int
     aiff_bit_depth: int
 
-    def calcsize(self, num_channels, num_packets):
+    def calcsize(self, num_channels: int, num_packets: int) -> int:
         return num_channels * num_packets * self.bytes_per_packet
 
 codec_info = {
@@ -43,7 +47,7 @@ codec_info = {
 }
 
 class IFFChunkWriter:
-    def __init__(self, stream, chunk_type):
+    def __init__(self, stream: io.BytesIO, chunk_type: bytes) -> None:
         assert type(chunk_type) is bytes
         assert len(chunk_type) == 4
         self.stream = stream
@@ -51,10 +55,13 @@ class IFFChunkWriter:
         self.length_placeholder = WritePlaceholder(stream, ">L")
         self.start_of_chunk = self.stream.tell()
 
-    def __enter__(self):
+    def __enter__(self) -> 'IFFChunkWriter':
         return self
 
-    def __exit__(self, a, b, c):
+    def __exit__(self,
+                 _a: Optional[BaseException],
+                 _b: Optional[str],
+                 _c: Optional[TracebackType]) -> None:
         chunk_length = self.stream.tell() - self.start_of_chunk
 
         # Add zero pad byte if chunk length is odd
@@ -63,7 +70,7 @@ class IFFChunkWriter:
 
         self.length_placeholder.commit(chunk_length)
 
-def convert_to_ieee_extended(num):
+def convert_to_ieee_extended(num: float) -> bytes:
     if num < 0:
         sign = 0x8000
         num *= -1.0
@@ -93,7 +100,7 @@ def convert_to_ieee_extended(num):
 
     return pack(">HLL", expon & 0xFFFF, hiMant, loMant)
 
-def convert_snd_to_aiff(data, name):
+def convert_snd_to_aiff(data: bytes, name: bytes) -> bytes:
     u = Unpacker(data)
 
     fmt, = u.unpack(">H")
@@ -129,7 +136,7 @@ def convert_snd_to_aiff(data, name):
 
     # ----
     # Read sound header
-
+    
     zero, union_int, sample_rate_fixed, loop_start, loop_end, encoding, base_note = u.unpack(">iiLLLBB")
     assert 0 == zero
 
@@ -176,15 +183,15 @@ def convert_snd_to_aiff(data, name):
         name            = name)
 
 def pack_aiff(
-        codec_4cc,
-        num_channels,
-        num_packets,
-        sample_rate,
-        sample_data,
-        loop_start,
-        loop_end,
-        base_note,
-        name):
+        codec_4cc: bytes,
+        num_channels: int,
+        num_packets: int,
+        sample_rate: float,
+        sample_data: bytes,
+        loop_start: int,
+        loop_end: int,
+        base_note: int,
+        name: bytes) -> bytes:
     has_loop = (loop_end - loop_start) > 1
     codec = codec_info[codec_4cc]
 

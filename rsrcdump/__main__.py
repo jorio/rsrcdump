@@ -1,6 +1,7 @@
 import os
 import sys
 import argparse
+
 from rsrcdump.resfork import unpack_resfork
 from rsrcdump.adf import unpack_adf, ADF_ENTRYNUM_RESOURCEFORK
 from rsrcdump.extract import extract_resource_map
