@@ -173,7 +173,6 @@ class IconConverter(ResourceConverter):
             bw_mask = b''
 
         if res.type in [b'icl8', b'ics8']:
-            
             image = convert_8bit_icon_to_bgra(color_icon, bw_mask, width, height)
         elif res.type in [b'icl4', b'ics4']:
             image = convert_4bit_icon_to_bgra(color_icon, bw_mask, width, height)
