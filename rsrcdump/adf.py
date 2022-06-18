@@ -29,7 +29,7 @@ def unpack_adf(adf_data: bytes) -> dict[int, bytes]:
 
     return entries
 
-def pack_adf(adf_entries: Dict[int, bytes]) -> bytes:
+def pack_adf(adf_entries: dict[int, bytes]) -> bytes:
     stream = BytesIO()
     stream.write(pack(">LL16xH", ADF_MAGIC, ADF_VERSION, len(adf_entries)))
 
