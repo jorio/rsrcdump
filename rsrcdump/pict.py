@@ -555,7 +555,7 @@ def convert_cicn_to_image(data: bytes) -> tuple[int, int, bytes]:
 
     return iconpm.frame_w, iconpm.frame_h, dst.getvalue()
 
-def convert_ppat_to_image(data: bytes) -> Tuple[int, int, bytes]:
+def convert_ppat_to_image(data: bytes) -> tuple[int, int, bytes]:
     # IM:QD page 4-103
     u = Unpacker(data)
 
