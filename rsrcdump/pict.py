@@ -94,7 +94,7 @@ def unpack_bits(slice: bytes, packfmt: str, rowbytes: int) -> list[int]:
 
     return unpacked
 
-def unpack_all_rows(u: Unpacker, packfmt: str, numrows: int, rowbytes: int) -> List[int]:
+def unpack_all_rows(u: Unpacker, packfmt: str, numrows: int, rowbytes: int) -> list[int]:
     assert rowbytes >= 8, "data is unpacked if rowbytes < 8; handle this case"
 
     data = []
