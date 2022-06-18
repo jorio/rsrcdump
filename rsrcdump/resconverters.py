@@ -137,7 +137,8 @@ class TemplateConverter(ResourceConverter):
         return fields
 
 class FileDumper(ResourceConverter):
-    __slots__ = ('preprocess',)
+    preprocess: Callable[[bytes], bytes] | None
+
     def __init__(self, extension: str, preprocess: Callable[[bytes], bytes]=None) -> None:
         super().__init__(extension)
         self.preprocess = preprocess
