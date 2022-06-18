@@ -122,7 +122,7 @@ def unpackbw(u: Unpacker, bm: Bitmap) -> bytes:
                 dst.write(b'\xFF\xFF\xFF\xFF')
     return dst.getvalue()
 
-def unpack0(u: Unpacker, pmh: Pixmap, palette: List[bytes]) -> bytes: # w: int, h: int, rowbytes: bytes, palette: List[bytes]) -> bytes:
+def unpack0(u: Unpacker, pmh: Pixmap, palette: list[bytes]) -> bytes:
     unpacked = bytes(unpack_all_rows(u, ">B", numrows=pmh.frame_h, rowbytes=pmh.rowbytes))
 
     assert len(unpacked) == pmh.rowbytes * pmh.frame_h
