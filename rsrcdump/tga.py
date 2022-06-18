@@ -1,7 +1,7 @@
 from io import BytesIO
 import struct
 
-def pack_tga(bgra_image, width, height):
+def pack_tga(bgra_image: bytes, width: int, height: int) -> bytes:
     assert len(bgra_image) == 4*width*height
     tga = BytesIO()
     tga.write(struct.pack("<BBBHHBHHHHBB",

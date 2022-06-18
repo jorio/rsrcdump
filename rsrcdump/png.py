@@ -1,10 +1,14 @@
+from typing import Optional
+from types import TracebackType
+
 import io
 import zlib
 import struct
+
 from rsrcdump.packutils import WritePlaceholder
 
 class PNGChunkWriter:
-    def __init__(self, stream, chunk_type):
+    def __init__(self, stream: io.BytesIO, chunk_type: bytes) -> None:
         assert type(chunk_type) is bytes
         assert len(chunk_type) == 4
         self.stream = stream
@@ -13,21 +17,24 @@ class PNGChunkWriter:
         self.start_of_block = self.stream.tell()
         self.write(chunk_type)
 
-    def __enter__(self):
+    def __enter__(self) -> 'PNGChunkWriter':
         return self
 
-    def __exit__(self, _a, _b, _c):
+    def __exit__(self,
+                 _a: Optional[BaseException],
+                 _b: Optional[str],
+                 _c: Optional[TracebackType]) -> None:
         end_of_block = self.stream.tell()
         block_length = end_of_block - self.start_of_block
         data_length = block_length - 4
         self.stream.write(struct.pack(">L", self.crc))
         self.length_placeholder.commit(data_length)
 
-    def write(self, data):
+    def write(self, data: bytes) -> None:
         self.crc = zlib.crc32(data, self.crc)
         self.stream.write(data)
 
-def pack_png(bgra_image, width, height):
+def pack_png(bgra_image: bytes, width: int, height: int) -> bytes:
     png = io.BytesIO()
     png.write(b"\x89PNG\r\n\x1A\n")
 

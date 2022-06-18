@@ -1,36 +1,47 @@
+from typing import Any, Callable
+
 import struct
+
 from rsrcdump.packutils import Unpacker
 from rsrcdump.pict import convert_pict_to_image, convert_cicn_to_image, convert_ppat_to_image, convert_sicn_to_image
 from rsrcdump.png import pack_png
 from rsrcdump.sndtoaiff import convert_snd_to_aiff
 from rsrcdump.icons import convert_4bit_icon_to_bgra, convert_8bit_icon_to_bgra, convert_1bit_icon_to_bgra
+from rsrcdump.resfork import Resource
 
 class ResourceConverter:
-    def __init__(self, separate_file=None):
+    separate_file: str
+
+    def __init__(self, separate_file: str="") -> None:
         self.separate_file = separate_file
 
-    def convert(self, res, res_map):
+    def convert(self, res: Resource, res_map: dict[bytes, dict[int, Resource]]) -> Any:
         return res.data
 
 class StructConverter(ResourceConverter):
-    def __init__(self, fmt, field_name_str, is_list=False):
+    fmt: str
+    record_length: int
+    field_names: list[str]
+    is_list: bool
+
+    def __init__(self, fmt: str, field_name_str: str, is_list: bool=False) -> None:
         super().__init__()
         self.fmt = fmt
         self.record_length = struct.calcsize(fmt)
         self.field_names = field_name_str.split(",")
         self.is_list = is_list
 
-    def convert(self, res, res_map):
+    def convert(self, res: Resource,
+                res_map: dict[bytes, dict[int, Resource]]) -> list[dict[str, bytes]] | dict[str, bytes]:
         if self.is_list:
             res_object = []
             assert len(res.data) % self.record_length == 0
             for i in range(len(res.data) // self.record_length):
                 res_object.append(self.parse_record(res.data, i*self.record_length))
             return res_object
-        else:
-            return self.parse_record(res.data, 0)
+        return self.parse_record(res.data, 0)
 
-    def parse_record(self, data, offset):
+    def parse_record(self, data: bytes, offset: int) -> dict[str, bytes]:
         record = {}
         field_values = struct.unpack_from(self.fmt, data, offset)
         for field_name, field_val in zip(self.field_names, field_values):
@@ -39,70 +50,84 @@ class StructConverter(ResourceConverter):
         return record
 
 class SingleStringConverter(ResourceConverter):
-    def convert(self, res, res_map):
-        return Unpacker(res.data).unpack_pstr()
+    def convert(self, res: Resource,
+                res_map: dict[bytes, dict[int, Resource]]) -> bytes:
+        result = Unpacker(res.data).unpack_pstr()
+        assert not isinstance(result, str), 'This should be impossible'
+        return result
 
 class StringListConverter(ResourceConverter):
-    def convert(self, res, res_map):
+    def convert(self, res: Resource,
+                res_map: dict[bytes, dict[int, Resource]]) -> list[bytes]:
         u = Unpacker(res.data)
         str_list = []
         count, = u.unpack(">H")
         for i in range(count):
-            str_list.append(u.unpack_pstr())
+            value = u.unpack_pstr()
+            assert not isinstance(value, str), 'This should be impossible'
+            str_list.append(value)
         return str_list
 
 class TextConverter(ResourceConverter):
-    def convert(self, res, res_map):
+    def convert(self, res: Resource,
+                res_map: dict[bytes, dict[int, Resource]]) -> str:
         return res.data.decode("macroman")
 
 class IcnsConverter(ResourceConverter):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(separate_file='.icns')
 
-    def convert(self, res, res_map):
+    def convert(self, res: Resource,
+                res_map: dict[bytes, dict[int, Resource]]) -> bytes:
         return res.data
 
 class SoundToAiffConverter(ResourceConverter):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(separate_file='.aiff')
 
-    def convert(self, res, res_map):
+    def convert(self, res: Resource,
+                res_map: dict[bytes, dict[int, Resource]]) -> bytes:
         return convert_snd_to_aiff(res.data, res.name)
 
 class PictConverter(ResourceConverter):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(separate_file='.png')
 
-    def convert(self, res, res_map):
+    def convert(self, res: Resource,
+                res_map: dict[bytes, dict[int, Resource]]) -> bytes:
         w, h, data = convert_pict_to_image(res.data)
         return pack_png(data, w, h)
 
 class CicnConverter(ResourceConverter):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(separate_file='.png')
 
-    def convert(self, res, res_map):
+    def convert(self, res: Resource,
+                res_map: dict[bytes, dict[int, Resource]]) -> bytes:
         w, h, data = convert_cicn_to_image(res.data)
         return pack_png(data, w, h)
 
 class PpatConverter(ResourceConverter):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(separate_file='.png')
 
-    def convert(self, res, res_map):
+    def convert(self, res: Resource,
+                res_map: dict[bytes, dict[int, Resource]]) -> bytes:
         w, h, data = convert_ppat_to_image(res.data)
         return pack_png(data, w, h)
 
 class SicnConverter(ResourceConverter):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(separate_file='.png')
 
-    def convert(self, res, res_map):
+    def convert(self, res: Resource,
+                res_map: dict[bytes, dict[int, Resource]]) -> bytes:
         w, h, data = convert_sicn_to_image(res.data)
         return pack_png(data, w, h)
 
 class TemplateConverter(ResourceConverter):
-    def convert(self, res, res_map):
+    def convert(self, res: Resource,
+                res_map: dict[bytes, dict[int, Resource]]) -> list[dict[str, str | bytes]]:
         u = Unpacker(res.data)
         fields = []
         while not u.eof():
@@ -112,21 +137,24 @@ class TemplateConverter(ResourceConverter):
         return fields
 
 class FileDumper(ResourceConverter):
-    def __init__(self, extension, preprocess=None):
+    preprocess: Callable[[bytes], bytes] | None
+
+    def __init__(self, extension: str, preprocess: Callable[[bytes], bytes]=None) -> None:
         super().__init__(extension)
         self.preprocess = preprocess
 
-    def convert(self, res, res_map):
+    def convert(self, res: Resource, res_map: dict[bytes, dict[int, Resource]]) -> bytes:
         if self.preprocess:
             return self.preprocess(res.data)
         else:
             return res.data
 
 class IconConverter(ResourceConverter):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(separate_file='.png')
     
-    def convert(self, res, res_map):
+    def convert(self, res: Resource,
+                res_map: dict[bytes, dict[int, Resource]]) -> bytes:
         if res.type in [b'icl8', b'icl4', b'ICN#']:
             width, height = 32, 32
             bw_icon_type = b'ICN#'
@@ -141,8 +169,8 @@ class IconConverter(ResourceConverter):
             bw_mask = bw_icon[width*height//8:]
         else:
             print(F"[WARNING] No {bw_icon_type.decode('macroman')} mask for {res.type.decode('macroman')} #{res.num}")
-            bw_icon = None
-            bw_mask = None
+            bw_icon = b''
+            bw_mask = b''
 
         if res.type in [b'icl8', b'ics8']:
             image = convert_8bit_icon_to_bgra(color_icon, bw_mask, width, height)

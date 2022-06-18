@@ -1,31 +1,38 @@
 from ctypes import ArgumentError
 import io
-from rsrcdump.packutils import Unpacker
 from dataclasses import dataclass
 import struct
+
+from rsrcdump.packutils import Unpacker
 
 class PICTError(Exception):
     pass
 
 class Xmap:
+    rowbytes: int
+    pixelsize: int
+    frame_t: int
+    frame_l: int
+    frame_b: int
+    frame_r: int
     @property
-    def frame_w(self):
+    def frame_w(self) -> int:
         return self.frame_r - self.frame_l
 
     @property
-    def frame_h(self):
+    def frame_h(self) -> int:
         return self.frame_b - self.frame_t
 
     @property
-    def frame_rect(self):
+    def frame_rect(self) -> tuple[int, int, int, int]:
         return (self.frame_t, self.frame_l, self.frame_b, self.frame_r)
 
     @property
-    def pixelsperrow(self):
+    def pixelsperrow(self) -> int:
         return 8 * self.rowbytes // self.pixelsize
 
     @property
-    def excesscolumns(self):
+    def excesscolumns(self) -> int:
         return self.pixelsperrow - self.frame_w
 
 @dataclass
@@ -37,7 +44,7 @@ class Bitmap(Xmap):
     frame_r: int
 
     @property
-    def pixelsize(self):
+    def pixelsize(self) -> int:# type: ignore
         return 1
 
 @dataclass
@@ -59,11 +66,11 @@ class Pixmap(Xmap):
     planebytes: int
     pmtable: int
 
-def rect_dims(rect_tuple):
+def rect_dims(rect_tuple: tuple[int, int, int, int]) -> tuple[int, int]:
     t, l, b, r = rect_tuple
     return r-l, b-t
 
-def unpack_bits(slice, packfmt, rowbytes):
+def unpack_bits(slice: bytes, packfmt: str, rowbytes: int) -> list[int]:
     unpacked = []
 
     u = Unpacker(slice)
@@ -78,13 +85,13 @@ def unpack_bits(slice, packfmt, rowbytes):
             unpacked.extend([item] * stride)
         else:  # unpacked data
             stride = flag + 1
-            for k in range(stride):
+            for _ in range(stride):
                 item = u.unpack(packfmt)[0]
                 unpacked.append(item)
 
     return unpacked
 
-def unpack_all_rows(u: Unpacker, packfmt, numrows, rowbytes):
+def unpack_all_rows(u: Unpacker, packfmt: str, numrows: int, rowbytes: int) -> list[int]:
     assert rowbytes >= 8, "data is unpacked if rowbytes < 8; handle this case"
 
     data = []
@@ -98,7 +105,7 @@ def unpack_all_rows(u: Unpacker, packfmt, numrows, rowbytes):
         data.extend(rowpixels)
     return data
 
-def unpackbw(u: Unpacker, bm: Bitmap):
+def unpackbw(u: Unpacker, bm: Bitmap) -> bytes:
     unpacked = unpack_all_rows(u, ">B", numrows=bm.frame_h, rowbytes=bm.rowbytes)
     dst = io.BytesIO()
     for y in range(bm.frame_h):
@@ -112,9 +119,8 @@ def unpackbw(u: Unpacker, bm: Bitmap):
                 dst.write(b'\xFF\xFF\xFF\xFF')
     return dst.getvalue()
 
-def unpack0(u: Unpacker, pmh: Pixmap, palette): # w, h, rowbytes, palette):
-    unpacked = unpack_all_rows(u, ">B", numrows=pmh.frame_h, rowbytes=pmh.rowbytes)
-    unpacked = bytes(unpacked)
+def unpack0(u: Unpacker, pmh: Pixmap, palette: list[bytes]) -> bytes:
+    unpacked = bytes(unpack_all_rows(u, ">B", numrows=pmh.frame_h, rowbytes=pmh.rowbytes))
 
     assert len(unpacked) == pmh.rowbytes * pmh.frame_h
 
@@ -129,7 +135,7 @@ def unpack0(u: Unpacker, pmh: Pixmap, palette): # w, h, rowbytes, palette):
     return dst.getvalue()
 
 # Unpack pixel type 3 (16 bits, chunky)
-def unpack3(u: Unpacker, w, h, rowbytes):
+def unpack3(u: Unpacker, w: int, h: int, rowbytes: int) -> bytes:
     unpacked = unpack_all_rows(u, ">H", h, rowbytes)
     if len(unpacked) != w*h:
         raise PICTError("unpack3: unexpected item count")
@@ -143,7 +149,7 @@ def unpack3(u: Unpacker, w, h, rowbytes):
     return dst.getvalue()
 
 # Unpack pixel type 4 (24 or 32 bits, planar)
-def unpack4(u: Unpacker, w, h, rowbytes, numplanes):
+def unpack4(u: Unpacker, w: int, h: int, rowbytes: int, numplanes: int) -> bytes:
     unpacked = unpack_all_rows(u, ">B", h, rowbytes)
     if len(unpacked) != numplanes*w*h:
         raise PICTError("unpack4: unexpected item count")
@@ -166,16 +172,15 @@ def unpack4(u: Unpacker, w, h, rowbytes, numplanes):
                 dst.write(struct.pack(">BBBB", b,g,r,a))
     return dst.getvalue()
 
-def read_bitmap_or_pixmap(u: Unpacker):
+def read_bitmap_or_pixmap(u: Unpacker) -> Bitmap | Pixmap:
     rowbytes_flag = u.unpack(">H")[0]
     rowbytes = rowbytes_flag & 0x7FFF
     is_pixmap = 0 != (rowbytes_flag & 0x8000)
     if is_pixmap:
         return Pixmap(rowbytes, *u.unpack("> 4h hh i ii hhhh i i 4x"))
-    else:
-        return Bitmap(rowbytes, *u.unpack("> 4h"))
+    return Bitmap(rowbytes, *u.unpack("> 4h"))
 
-def read_colortable(u: Unpacker):
+def read_colortable(u: Unpacker) -> list[bytes]:
     seed, flags, numcolors = u.unpack(">LHH")
     numcolors += 1
     #print(F"Seed: {seed:08x}", "NColors:", numcolors)
@@ -208,7 +213,7 @@ def read_colortable(u: Unpacker):
     
     return palette
 
-def unpack_maskrgn(mask, w, h):
+def unpack_maskrgn(mask: bytes, w: int, h: int) -> bytes:
     out = io.BytesIO()
 
     u = Unpacker(mask)
@@ -241,7 +246,7 @@ def unpack_maskrgn(mask, w, h):
     assert len(buf) == w*h
     return buf
 
-def read_pict_bits(u: Unpacker, opcode):
+def read_pict_bits(u: Unpacker, opcode: int) -> tuple[tuple[int, int, int, int], bytes]:
     direct_bits_opcode = opcode in [0x009A, 0x009B]
     region_opcode = opcode in [0x0091, 0x0099]
 
@@ -278,7 +283,7 @@ def read_pict_bits(u: Unpacker, opcode):
     if opcode in [0x0091, 0x009b]:
         raise PICTError("read_pict_bits unimplemented opcode")
 
-    bgra = read_pixmap_image_data(u, pmh, palette)
+    bgra = read_pixmap_image_data(u, pmh, palette)# type: ignore
 
     if mask:
         out = io.BytesIO()
@@ -288,7 +293,7 @@ def read_pict_bits(u: Unpacker, opcode):
 
     return pmh.frame_rect, bgra
 
-def read_pixmap_image_data(u: Unpacker, pmh, palette):
+def read_pixmap_image_data(u: Unpacker, pmh: Bitmap | Pixmap, palette: list[bytes]) -> bytes:
     frame_w, frame_h = pmh.frame_w, pmh.frame_h
     if frame_w < 0 or frame_h < 0:
         raise PICTError(F"illegal canvas dimensions {frame_w} {frame_h}")
@@ -301,8 +306,7 @@ def read_pixmap_image_data(u: Unpacker, pmh, palette):
         return unpack3(u, frame_w, frame_h, pmh.rowbytes)
     elif pmh.packtype == 4:
         return unpack4(u, frame_w, frame_h, pmh.rowbytes, pmh.cmpcount)
-    else:
-        raise PICTError(F"unsupported pack_type {pmh.packtype}")
+    raise PICTError(F"unsupported pack_type {pmh.packtype}")
 
 skip_opcodes = {
     0x0000: (0, "NOP"),
@@ -342,7 +346,7 @@ skip_opcodes = {
     0x007C: (0, "fillSamePoly"),
 }
 
-def get_reserved_opcode_size(k):
+def get_reserved_opcode_size(k: int) -> int:
     if 0x0035 <= k <= 0x0037: return 8
     if 0x003D <= k <= 0x003F: return 0
     if 0x0045 <= k <= 0x0047: return 8
@@ -363,7 +367,7 @@ def get_reserved_opcode_size(k):
     if 0x8000 <= k <= 0x80FF: return 0
     return -1
 
-def convert_pict_to_image(data):
+def convert_pict_to_image(data: bytes) -> tuple[int, int, bytes]:
     u = Unpacker(data)
     start_offset = u.offset
 
@@ -423,7 +427,7 @@ def convert_pict_to_image(data):
             length, = u.unpack(">L")
             u.read(length)
         elif opcode in [0x00FF]:  # done
-            if not pm:
+            if not pm or not pm_rect:
                 print("!!! exiting PICT without a pixmap")
                 return 0, 0, b''
             pm_w, pm_h = rect_dims(pm_rect)
@@ -461,7 +465,7 @@ def convert_pict_to_image(data):
         else:
             raise PICTError(F"unsupported PICT opcode 0x{opcode:04x}")
 
-def convert_to_8bit(raw, pixelsize):
+def convert_to_8bit(raw: bytes, pixelsize: int) -> bytes:
     if pixelsize == 8:
         return raw
     
@@ -492,7 +496,7 @@ def convert_to_8bit(raw, pixelsize):
 
     return out.getvalue()
 
-def trim_excess_columns_8bit(raw8, pm):
+def trim_excess_columns_8bit(raw8: bytes, pm: Xmap) -> bytes:
     w = pm.frame_w
     h = pm.frame_h
     excess = pm.excesscolumns
@@ -503,7 +507,7 @@ def trim_excess_columns_8bit(raw8, pm):
         out.write(raw8[y*(w+excess) : y*(w+excess) + w])
     return out.getvalue()
 
-def convert_cicn_to_image(data):
+def convert_cicn_to_image(data: bytes) -> tuple[int, int, bytes]:
     u = Unpacker(data)
     
     off = u.offset
@@ -548,7 +552,7 @@ def convert_cicn_to_image(data):
 
     return iconpm.frame_w, iconpm.frame_h, dst.getvalue()
 
-def convert_ppat_to_image(data):
+def convert_ppat_to_image(data: bytes) -> tuple[int, int, bytes]:
     # IM:QD page 4-103
     u = Unpacker(data)
 
@@ -565,6 +569,9 @@ def convert_ppat_to_image(data):
 
     u.read(4)  # Skip junk
     pm = read_bitmap_or_pixmap(u)
+    
+    if isinstance(pm, Bitmap):
+        raise ValueError('Expected Pixmap from read_bitmap_or_pixmap')
 
     image_data = u.read(pm.pmtable - pat_data)  # pm.pmtable = offset to clut
     palette = read_colortable(u)
@@ -578,7 +585,7 @@ def convert_ppat_to_image(data):
         bgra.write(palette[px])
     return pm.frame_w, pm.frame_h, bgra.getvalue()
 
-def convert_sicn_to_image(data):
+def convert_sicn_to_image(data: bytes) -> tuple[int, int, bytes]:
     num_icons = len(data) // 32
     image8 = convert_to_8bit(data, 1)
     bgra = io.BytesIO()

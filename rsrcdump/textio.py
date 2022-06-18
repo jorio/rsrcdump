@@ -12,7 +12,7 @@ def parse_type_name(sane_name: str) -> bytes:
     assert len(ostype) == 4
     return ostype
 
-def sanitize_resource_name(name):
+def sanitize_resource_name(name: str) -> str:
     sanitized = ""
     for c in name:
         if c in 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-':

@@ -1,7 +1,8 @@
 from dataclasses import dataclass
-from rsrcdump.packutils import Unpacker, WritePlaceholder
 from struct import unpack_from, pack
 from io import BytesIO
+
+from rsrcdump.packutils import Unpacker, WritePlaceholder
 
 @dataclass
 class Resource:
@@ -11,7 +12,7 @@ class Resource:
     name: bytes
     flags: int  # byte
 
-def unpack_resfork(fork):
+def unpack_resfork(fork: bytes) -> dict[bytes, dict[int, Resource]]:
     if not fork:
         return {}
 
@@ -24,7 +25,7 @@ def unpack_resfork(fork):
     file_attributes, typelist_offset_in_map, namelist_offset_in_map, num_types = u_map.unpack(">16x4x2xHHHH")
     num_types += 1
 
-    res_map = {}
+    res_map: dict[bytes, dict[int, Resource]] = {}
 
     u_types = Unpacker(u_map.data[typelist_offset_in_map:])
     u_names = Unpacker(u_map.data[namelist_offset_in_map:])
@@ -65,7 +66,7 @@ def unpack_resfork(fork):
 
     return res_map
 
-def pack_resfork(res_map):
+def pack_resfork(res_map: dict[bytes, dict[str, Resource]]) -> bytes:
     stream = BytesIO()
 
     # Resource fork
