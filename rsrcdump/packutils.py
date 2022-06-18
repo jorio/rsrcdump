@@ -8,7 +8,7 @@ class Unpacker:
         self.data = data
         self.offset = offset
 
-    def unpack(self, fmt: str) -> Tuple:
+    def unpack(self, fmt: str) -> tuple:
         record_length = struct.calcsize(fmt)
         fields = struct.unpack_from(fmt, self.data, self.offset)
         self.offset += record_length
