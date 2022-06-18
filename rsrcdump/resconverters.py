@@ -90,7 +90,6 @@ class SoundToAiffConverter(ResourceConverter):
         return convert_snd_to_aiff(res.data, res.name)
 
 class PictConverter(ResourceConverter):
-    __slots__: Tuple = tuple()
     def __init__(self) -> None:
         super().__init__(separate_file='.png')
 
