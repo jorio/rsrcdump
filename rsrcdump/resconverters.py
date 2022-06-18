@@ -69,7 +69,6 @@ class StringListConverter(ResourceConverter):
         return str_list
 
 class TextConverter(ResourceConverter):
-    __slots__: Tuple = tuple()
     def convert(self, res: Resource,
                 res_map: dict[bytes, dict[int, Resource]]) -> str:
         return res.data.decode("macroman")
