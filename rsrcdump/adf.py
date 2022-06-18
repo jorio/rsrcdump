@@ -1,4 +1,4 @@
-from typing import Dict, Final
+from typing import Final
 
 from io import BytesIO
 from struct import pack
