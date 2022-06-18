@@ -25,7 +25,7 @@ def unpack_resfork(fork: bytes) -> dict[bytes, dict[int, Resource]]:
     file_attributes, typelist_offset_in_map, namelist_offset_in_map, num_types = u_map.unpack(">16x4x2xHHHH")
     num_types += 1
 
-    res_map: Dict[bytes, Dict[int, Resource]] = {}
+    res_map: dict[bytes, dict[int, Resource]] = {}
 
     u_types = Unpacker(u_map.data[typelist_offset_in_map:])
     u_names = Unpacker(u_map.data[namelist_offset_in_map:])
