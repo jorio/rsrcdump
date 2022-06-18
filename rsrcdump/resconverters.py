@@ -19,7 +19,11 @@ class ResourceConverter:
         return res.data
 
 class StructConverter(ResourceConverter):
-    __slots__ = ('fmt', 'record_length', 'field_names', 'is_list')
+    fmt: str
+    record_length: int
+    field_names: list[str]
+    is_list: bool
+
     def __init__(self, fmt: str, field_name_str: str, is_list: bool=False) -> None:
         super().__init__()
         self.fmt = fmt
