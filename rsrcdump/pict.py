@@ -73,7 +73,7 @@ def rect_dims(rect_tuple: tuple[int, int, int, int]) -> tuple[int, int]:
     t, l, b, r = rect_tuple
     return r-l, b-t
 
-def unpack_bits(slice: bytes, packfmt: str, rowbytes: int) -> List[int]:
+def unpack_bits(slice: bytes, packfmt: str, rowbytes: int) -> list[int]:
     unpacked = []
 
     u = Unpacker(slice)
