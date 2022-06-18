@@ -48,7 +48,7 @@ class StructConverter(ResourceConverter):
 class SingleStringConverter(ResourceConverter):
     __slots__: Tuple = tuple()
     def convert(self, res: Resource,
-                res_map: Dict[bytes, Dict[int, Resource]]) -> bytes:
+                res_map: dict[bytes, dict[int, Resource]]) -> bytes:
         result = Unpacker(res.data).unpack_pstr()
         assert not isinstance(result, str), 'This should be impossible'
         return result
