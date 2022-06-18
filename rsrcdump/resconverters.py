@@ -154,7 +154,7 @@ class IconConverter(ResourceConverter):
         super().__init__(separate_file='.png')
     
     def convert(self, res: Resource,
-                res_map: Dict[bytes, Dict[int, Resource]]) -> bytes:
+                res_map: dict[bytes, dict[int, Resource]]) -> bytes:
         if res.type in [b'icl8', b'icl4', b'ICN#']:
             width, height = 32, 32
             bw_icon_type = b'ICN#'
