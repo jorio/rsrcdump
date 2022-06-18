@@ -94,7 +94,7 @@ class PictConverter(ResourceConverter):
         super().__init__(separate_file='.png')
 
     def convert(self, res: Resource,
-                res_map: Dict[bytes, Dict[int, Resource]]) -> bytes:
+                res_map: dict[bytes, dict[int, Resource]]) -> bytes:
         w, h, data = convert_pict_to_image(res.data)
         return pack_png(data, w, h)
 
