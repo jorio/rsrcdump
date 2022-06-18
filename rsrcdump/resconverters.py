@@ -41,7 +41,7 @@ class StructConverter(ResourceConverter):
             return res_object
         return self.parse_record(res.data, 0)
 
-    def parse_record(self, data: bytes, offset: int) -> Dict[str, bytes]:
+    def parse_record(self, data: bytes, offset: int) -> dict[str, bytes]:
         record = {}
         field_values = struct.unpack_from(self.fmt, data, offset)
         for field_name, field_val in zip(self.field_names, field_values):
