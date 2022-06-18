@@ -12,8 +12,12 @@ class PICTError(Exception):
     pass
 
 class Xmap:
-    __slots__ = ('frame_r', 'frame_l', 'frame_b', 'frame_t',
-                 'rowbytes', 'pixelsize')
+    rowbytes: int
+    pixelsize: int
+    frame_t: int
+    frame_l: int
+    frame_b: int
+    frame_r: int
     @property
     def frame_w(self) -> int:
         return self.frame_r - self.frame_l# type: ignore
