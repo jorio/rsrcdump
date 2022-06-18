@@ -370,7 +370,7 @@ def get_reserved_opcode_size(k: int) -> int:
     if 0x8000 <= k <= 0x80FF: return 0
     return -1
 
-def convert_pict_to_image(data: bytes) -> Tuple[int, int, bytes]:
+def convert_pict_to_image(data: bytes) -> tuple[int, int, bytes]:
     u = Unpacker(data)
     start_offset = u.offset
 
