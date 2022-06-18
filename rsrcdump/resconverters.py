@@ -176,7 +176,6 @@ class IconConverter(ResourceConverter):
         else:
             print(F"[WARNING] No {bw_icon_type.decode('macroman')} mask for {res.type.decode('macroman')} #{res.num}")
             bw_icon = b''
-##            bw_mask = None
             bw_mask = b''
 
         if res.type in [b'icl8', b'ics8']:
