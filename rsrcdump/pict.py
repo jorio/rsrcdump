@@ -175,7 +175,7 @@ def unpack4(u: Unpacker, w: int, h: int, rowbytes: int, numplanes: int) -> bytes
                 dst.write(struct.pack(">BBBB", b,g,r,a))
     return dst.getvalue()
 
-def read_bitmap_or_pixmap(u: Unpacker) -> Union[Pixmap, Bitmap]:
+def read_bitmap_or_pixmap(u: Unpacker) -> Bitmap | Pixmap:
     rowbytes_flag = u.unpack(">H")[0]
     rowbytes = rowbytes_flag & 0x7FFF
     is_pixmap = 0 != (rowbytes_flag & 0x8000)
