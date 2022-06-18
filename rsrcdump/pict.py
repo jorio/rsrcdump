@@ -69,7 +69,7 @@ class Pixmap(Xmap):
     planebytes: int
     pmtable: int
 
-def rect_dims(rect_tuple: Tuple[int, int, int, int]) -> Tuple[int, int]:
+def rect_dims(rect_tuple: tuple[int, int, int, int]) -> tuple[int, int]:
     t, l, b, r = rect_tuple
     return r-l, b-t
 
