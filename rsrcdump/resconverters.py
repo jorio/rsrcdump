@@ -15,7 +15,7 @@ class ResourceConverter:
     def __init__(self, separate_file: str="") -> None:
         self.separate_file = separate_file
 
-    def convert(self, res: Resource, res_map: Dict[bytes, Dict[int, Resource]]) -> Any:
+    def convert(self, res: Resource, res_map: dict[bytes, dict[int, Resource]]) -> Any:
         return res.data
 
 class StructConverter(ResourceConverter):
