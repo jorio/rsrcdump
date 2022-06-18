@@ -1,5 +1,3 @@
-from typing import Tuple, Union
-
 from io import BytesIO
 import struct
 
