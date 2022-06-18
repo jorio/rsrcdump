@@ -24,7 +24,7 @@ class Xmap:
 
     @property
     def frame_h(self) -> int:
-        return self.frame_b - self.frame_t# type: ignore
+        return self.frame_b - self.frame_t
 
     @property
     def frame_rect(self) -> Tuple[int, int, int, int]:
