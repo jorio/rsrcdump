@@ -66,7 +66,7 @@ def unpack_resfork(fork: bytes) -> dict[bytes, dict[int, Resource]]:
 
     return res_map
 
-def pack_resfork(res_map: Dict[bytes, Dict[str, Resource]]) -> bytes:
+def pack_resfork(res_map: dict[bytes, dict[str, Resource]]) -> bytes:
     stream = BytesIO()
 
     # Resource fork
