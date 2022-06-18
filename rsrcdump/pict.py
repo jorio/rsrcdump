@@ -32,7 +32,7 @@ class Xmap:
 
     @property
     def pixelsperrow(self) -> int:
-        return 8 * self.rowbytes // self.pixelsize# type: ignore
+        return 8 * self.rowbytes // self.pixelsize
 
     @property
     def excesscolumns(self) -> int:
