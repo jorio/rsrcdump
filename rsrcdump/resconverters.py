@@ -32,7 +32,7 @@ class StructConverter(ResourceConverter):
         self.is_list = is_list
 
     def convert(self, res: Resource,
-                res_map: Dict[bytes, Dict[int, Resource]]) -> Union[List[Dict[str, bytes]], Dict[str, bytes]]:
+                res_map: dict[bytes, dict[int, Resource]]) -> list[dict[str, bytes]] | dict[str, bytes]:
         if self.is_list:
             res_object = []
             assert len(res.data) % self.record_length == 0
