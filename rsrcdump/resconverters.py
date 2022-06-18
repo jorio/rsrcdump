@@ -50,7 +50,6 @@ class StructConverter(ResourceConverter):
         return record
 
 class SingleStringConverter(ResourceConverter):
-    __slots__: Tuple = tuple()
     def convert(self, res: Resource,
                 res_map: dict[bytes, dict[int, Resource]]) -> bytes:
         result = Unpacker(res.data).unpack_pstr()
