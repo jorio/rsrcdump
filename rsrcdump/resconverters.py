@@ -99,7 +99,6 @@ class PictConverter(ResourceConverter):
         return pack_png(data, w, h)
 
 class CicnConverter(ResourceConverter):
-    __slots__: Tuple = tuple()
     def __init__(self) -> None:
         super().__init__(separate_file='.png')
 
