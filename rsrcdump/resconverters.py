@@ -58,7 +58,7 @@ class SingleStringConverter(ResourceConverter):
 
 class StringListConverter(ResourceConverter):
     def convert(self, res: Resource,
-                res_map: Dict[bytes, Dict[int, Resource]]) -> List[bytes]:
+                res_map: dict[bytes, dict[int, Resource]]) -> list[bytes]:
         u = Unpacker(res.data)
         str_list = []
         count, = u.unpack(">H")
