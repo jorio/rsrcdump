@@ -18,7 +18,7 @@ def extract_resource_map(res_map: dict[bytes, dict[int, Resource]],
     except FileExistsError:
         pass
 
-    J: Dict[str, Dict[int, Dict[str, Union[int, str]]]] = {}
+    J: dict[str, dict[int, dict[str, Any]]] = {}
     for res_type, res_dir in res_map.items():
         res_type_key = res_type.decode('macroman')
 
