@@ -20,7 +20,7 @@ class Xmap:
     frame_r: int
     @property
     def frame_w(self) -> int:
-        return self.frame_r - self.frame_l# type: ignore
+        return self.frame_r - self.frame_l
 
     @property
     def frame_h(self) -> int:
