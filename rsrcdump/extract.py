@@ -8,10 +8,10 @@ from rsrcdump.resconverters import converters
 from rsrcdump.textio import sanitize_type_name, sanitize_resource_name
 from rsrcdump.resfork import Resource
 
-def extract_resource_map(res_map: Dict[bytes, Dict[int, Resource]],
+def extract_resource_map(res_map: dict[bytes, dict[int, Resource]],
                          outpath: str,
-                         include_types: List[bytes]=[],
-                         exclude_types: List[bytes]=[],
+                         include_types: list[bytes]=[],
+                         exclude_types: list[bytes]=[],
                          quiet: bool=False) -> None:
     try:
         os.mkdir(outpath)
