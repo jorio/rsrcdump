@@ -82,7 +82,6 @@ class IcnsConverter(ResourceConverter):
         return res.data
 
 class SoundToAiffConverter(ResourceConverter):
-    __slots__: Tuple = tuple()
     def __init__(self) -> None:
         super().__init__(separate_file='.aiff')
 
