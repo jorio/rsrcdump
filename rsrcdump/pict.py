@@ -27,8 +27,8 @@ class Xmap:
         return self.frame_b - self.frame_t
 
     @property
-    def frame_rect(self) -> Tuple[int, int, int, int]:
-        return (self.frame_t, self.frame_l, self.frame_b, self.frame_r)# type: ignore
+    def frame_rect(self) -> tuple[int, int, int, int]:
+        return (self.frame_t, self.frame_l, self.frame_b, self.frame_r)
 
     @property
     def pixelsperrow(self) -> int:
