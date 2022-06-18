@@ -21,7 +21,7 @@ STR# | Array of UTF-8 strings (stored in index.json)
 
 ## Requirements
 
-Python 3.8 or later.
+Python 3.10 or later.
 
 ## How to use
 
