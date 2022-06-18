@@ -23,7 +23,7 @@ class Unpacker:
         self.offset += size
         return data_slice
 
-    def unpack_pstr(self, decode: bool=True) -> Union[str, bytes]:
+    def unpack_pstr(self, decode: bool=True) -> str | bytes:
         length, = self.unpack(">B")
         binary_pstr = self.read(length)
         if decode:
