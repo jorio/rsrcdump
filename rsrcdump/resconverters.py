@@ -175,7 +175,7 @@ class IconConverter(ResourceConverter):
             bw_mask = bw_icon[width*height//8:]
         else:
             print(F"[WARNING] No {bw_icon_type.decode('macroman')} mask for {res.type.decode('macroman')} #{res.num}")
-            bw_icon = None
+            bw_icon = b''
 ##            bw_mask = None
             bw_mask = b''
 
