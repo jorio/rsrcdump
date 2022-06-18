@@ -57,7 +57,6 @@ class SingleStringConverter(ResourceConverter):
         return result
 
 class StringListConverter(ResourceConverter):
-    __slots__: Tuple = tuple()
     def convert(self, res: Resource,
                 res_map: Dict[bytes, Dict[int, Resource]]) -> List[bytes]:
         u = Unpacker(res.data)
