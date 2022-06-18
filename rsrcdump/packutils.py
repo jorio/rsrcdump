@@ -44,7 +44,7 @@ class WritePlaceholder:
         self.stream.write(b'\xCA' * struct.calcsize(fmt))
         self.committed = False
 
-    def commit(self, value: Union[int, bytes, str]) -> None:
+    def commit(self, value: Any) -> None:
         assert not self.committed, "Already committed"
         position_backup = self.stream.tell()
         data = struct.pack(self.fmt, value)
