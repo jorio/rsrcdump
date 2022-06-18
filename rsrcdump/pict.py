@@ -183,7 +183,7 @@ def read_bitmap_or_pixmap(u: Unpacker) -> Union[Pixmap, Bitmap]:
         return Pixmap(rowbytes, *u.unpack("> 4h hh i ii hhhh i i 4x"))
     return Bitmap(rowbytes, *u.unpack("> 4h"))
 
-def read_colortable(u: Unpacker) -> List[bytes]:
+def read_colortable(u: Unpacker) -> list[bytes]:
     seed, flags, numcolors = u.unpack(">LHH")
     numcolors += 1
     #print(F"Seed: {seed:08x}", "NColors:", numcolors)
