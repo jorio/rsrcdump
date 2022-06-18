@@ -281,7 +281,7 @@ def read_pict_bits(u: Unpacker, opcode: int) -> tuple[tuple[int, int, int, int],
             mask = unpack_maskrgn(maskrgn_bits, mask_w, mask_h)
             #print(binascii.hexlify(maskrgn_bits, ' ', 2))
 
-    if opcode in [0x0091, 0x009b] or palette is None:
+    if opcode in [0x0091, 0x009b]:
         raise PICTError("read_pict_bits unimplemented opcode")
 
     bgra = read_pixmap_image_data(u, pmh, palette)
