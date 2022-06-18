@@ -9,7 +9,7 @@ ADF_MAGIC: Final   = 0x00051607
 ADF_VERSION: Final = 0x00020000
 ADF_ENTRYNUM_RESOURCEFORK: Final = 2
 
-def unpack_adf(adf_data: bytes) -> Dict[int, bytes]:
+def unpack_adf(adf_data: bytes) -> dict[int, bytes]:
     u = Unpacker(adf_data)
 
     magic, version, num_entries = u.unpack(">LL16xH")
