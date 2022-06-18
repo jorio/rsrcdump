@@ -74,7 +74,6 @@ class TextConverter(ResourceConverter):
         return res.data.decode("macroman")
 
 class IcnsConverter(ResourceConverter):
-    __slots__: Tuple = tuple()
     def __init__(self) -> None:
         super().__init__(separate_file='.icns')
 
