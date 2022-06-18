@@ -46,7 +46,7 @@ def extract_resource_map(res_map: dict[bytes, dict[int, Resource]],
             else:
                 obj = res.data
 
-            wrapper: Dict[str, Union[int, str]] = {}
+            wrapper: dict[str, Any] = {}
             
             if res.name:
                 wrapper['name'] = res.name.decode('macroman')
