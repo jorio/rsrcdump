@@ -588,7 +588,7 @@ def convert_ppat_to_image(data: bytes) -> tuple[int, int, bytes]:
         bgra.write(palette[px])
     return pm.frame_w, pm.frame_h, bgra.getvalue()
 
-def convert_sicn_to_image(data: bytes) -> Tuple[int, int, bytes]:
+def convert_sicn_to_image(data: bytes) -> tuple[int, int, bytes]:
     num_icons = len(data) // 32
     image8 = convert_to_8bit(data, 1)
     bgra = io.BytesIO()
