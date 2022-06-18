@@ -5,7 +5,6 @@ import struct
 
 from rsrcdump.packutils import Unpacker
 
-
 class PICTError(Exception):
     pass
 
@@ -45,7 +44,7 @@ class Bitmap(Xmap):
     frame_r: int
 
     @property
-    def pixelsize(self) -> int:
+    def pixelsize(self) -> int:# type: ignore
         return 1
 
 @dataclass
@@ -284,7 +283,7 @@ def read_pict_bits(u: Unpacker, opcode: int) -> tuple[tuple[int, int, int, int],
     if opcode in [0x0091, 0x009b]:
         raise PICTError("read_pict_bits unimplemented opcode")
 
-    bgra = read_pixmap_image_data(u, pmh, palette)
+    bgra = read_pixmap_image_data(u, pmh, palette)# type: ignore
 
     if mask:
         out = io.BytesIO()

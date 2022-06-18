@@ -127,7 +127,7 @@ class SicnConverter(ResourceConverter):
 
 class TemplateConverter(ResourceConverter):
     def convert(self, res: Resource,
-                res_map: dict[bytes, dict[int, Resource]]) -> list[dict[str, str]]:
+                res_map: dict[bytes, dict[int, Resource]]) -> list[dict[str, str | bytes]]:
         u = Unpacker(res.data)
         fields = []
         while not u.eof():

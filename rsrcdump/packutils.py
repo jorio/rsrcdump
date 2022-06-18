@@ -1,3 +1,5 @@
+from typing import Any
+
 from io import BytesIO
 import struct
 
