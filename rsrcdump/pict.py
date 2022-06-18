@@ -572,7 +572,7 @@ def convert_ppat_to_image(data: bytes) -> tuple[int, int, bytes]:
     pm = read_bitmap_or_pixmap(u)
     
     if isinstance(pm, Bitmap):
-        raise ValueError('Expected Bitmap from read_bitmap_or_pixmap')
+        raise ValueError('Expected Pixmap from read_bitmap_or_pixmap')
 
     image_data = u.read(pm.pmtable - pat_data)  # pm.pmtable = offset to clut
     palette = read_colortable(u)
