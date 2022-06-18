@@ -12,7 +12,7 @@ class Resource:
     name: bytes
     flags: int  # byte
 
-def unpack_resfork(fork: bytes) -> Dict[bytes, Dict[int, Resource]]:
+def unpack_resfork(fork: bytes) -> dict[bytes, dict[int, Resource]]:
     if not fork:
         return {}
 
