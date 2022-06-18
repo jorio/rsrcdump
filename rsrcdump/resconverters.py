@@ -143,7 +143,7 @@ class FileDumper(ResourceConverter):
         super().__init__(extension)
         self.preprocess = preprocess
 
-    def convert(self, res: Resource, res_map: Dict[bytes, Dict[int, Resource]]) -> bytes:
+    def convert(self, res: Resource, res_map: dict[bytes, dict[int, Resource]]) -> bytes:
         if self.preprocess:
             return self.preprocess(res.data)
         else:
