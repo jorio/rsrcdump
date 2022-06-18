@@ -126,7 +126,6 @@ class SicnConverter(ResourceConverter):
         return pack_png(data, w, h)
 
 class TemplateConverter(ResourceConverter):
-    __slots__: Tuple = tuple()
     def convert(self, res: Resource,
                 res_map: Dict[bytes, Dict[int, Resource]]) -> List[Dict[str, Union[str, bytes]]]:
         u = Unpacker(res.data)
