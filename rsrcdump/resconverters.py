@@ -86,7 +86,7 @@ class SoundToAiffConverter(ResourceConverter):
         super().__init__(separate_file='.aiff')
 
     def convert(self, res: Resource,
-                res_map: Dict[bytes, Dict[int, Resource]]) -> bytes:
+                res_map: dict[bytes, dict[int, Resource]]) -> bytes:
         return convert_snd_to_aiff(res.data, res.name)
 
 class PictConverter(ResourceConverter):
