@@ -510,7 +510,7 @@ def trim_excess_columns_8bit(raw8: bytes, pm: Xmap) -> bytes:
         out.write(raw8[y*(w+excess) : y*(w+excess) + w])
     return out.getvalue()
 
-def convert_cicn_to_image(data: bytes) -> Tuple[int, int, bytes]:
+def convert_cicn_to_image(data: bytes) -> tuple[int, int, bytes]:
     u = Unpacker(data)
     
     off = u.offset
