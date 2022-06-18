@@ -1,4 +1,4 @@
-from typing import Callable, List
+from typing import Callable
 
 from io import BytesIO
 from struct import pack
