@@ -10,8 +10,9 @@ from rsrcdump.icons import convert_4bit_icon_to_bgra, convert_8bit_icon_to_bgra,
 from rsrcdump.resfork import Resource
 
 class ResourceConverter:
-    __slots__ = ('separate_file',)
-    def __init__(self, separate_file: str=None) -> None:
+    separate_file: str
+
+    def __init__(self, separate_file: str="") -> None:
         self.separate_file = separate_file
 
     def convert(self, res: Resource, res_map: Dict[bytes, Dict[int, Resource]]) -> Any:
