@@ -249,7 +249,7 @@ def unpack_maskrgn(mask: bytes, w: int, h: int) -> bytes:
     assert len(buf) == w*h
     return buf
 
-def read_pict_bits(u: Unpacker, opcode: int) -> Tuple[Tuple[int, int, int, int], bytes]:
+def read_pict_bits(u: Unpacker, opcode: int) -> tuple[tuple[int, int, int, int], bytes]:
     direct_bits_opcode = opcode in [0x009A, 0x009B]
     region_opcode = opcode in [0x0091, 0x0099]
 
