@@ -78,7 +78,7 @@ class IcnsConverter(ResourceConverter):
         super().__init__(separate_file='.icns')
 
     def convert(self, res: Resource,
-                res_map: Dict[bytes, Dict[int, Resource]]) -> bytes:
+                res_map: dict[bytes, dict[int, Resource]]) -> bytes:
         return res.data
 
 class SoundToAiffConverter(ResourceConverter):
