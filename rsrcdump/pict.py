@@ -296,7 +296,7 @@ def read_pict_bits(u: Unpacker, opcode: int) -> tuple[tuple[int, int, int, int],
 
     return pmh.frame_rect, bgra
 
-def read_pixmap_image_data(u: Unpacker, pmh: Union[Bitmap, Pixmap], palette: List[bytes]) -> bytes:
+def read_pixmap_image_data(u: Unpacker, pmh: Bitmap | Pixmap, palette: list[bytes]) -> bytes:
     frame_w, frame_h = pmh.frame_w, pmh.frame_h
     if frame_w < 0 or frame_h < 0:
         raise PICTError(F"illegal canvas dimensions {frame_w} {frame_h}")
