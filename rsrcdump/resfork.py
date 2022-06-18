@@ -1,5 +1,3 @@
-from typing import Dict
-
 from dataclasses import dataclass
 from struct import unpack_from, pack
 from io import BytesIO
