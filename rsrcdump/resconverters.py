@@ -53,7 +53,6 @@ class SingleStringConverter(ResourceConverter):
     def convert(self, res: Resource,
                 res_map: dict[bytes, dict[int, Resource]]) -> bytes:
         result = Unpacker(res.data).unpack_pstr()
-        assert not isinstance(result, str), 'This should be impossible'
         return result
 
 class StringListConverter(ResourceConverter):
@@ -62,9 +61,8 @@ class StringListConverter(ResourceConverter):
         u = Unpacker(res.data)
         str_list = []
         count, = u.unpack(">H")
-        for i in range(count):
+        for _ in range(count):
             value = u.unpack_pstr()
-            assert not isinstance(value, str), 'This should be impossible'
             str_list.append(value)
         return str_list
 
