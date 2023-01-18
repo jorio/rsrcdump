@@ -9,55 +9,89 @@ from rsrcdump.sndtoaiff import convert_snd_to_aiff
 from rsrcdump.icons import convert_4bit_icon_to_bgra, convert_8bit_icon_to_bgra, convert_1bit_icon_to_bgra
 from rsrcdump.resfork import Resource
 
+
 class ResourceConverter:
+    """ Base class for all resource converters. """
+
     separate_file: str
 
-    def __init__(self, separate_file: str="") -> None:
+    def __init__(self, separate_file: str = "") -> None:
         self.separate_file = separate_file
 
     def convert(self, res: Resource, res_map: dict[bytes, dict[int, Resource]]) -> Any:
         return res.data
 
+
 class StructConverter(ResourceConverter):
-    fmt: str
+    format: str
     record_length: int
     field_names: list[str]
     is_list: bool
 
-    def __init__(self, fmt: str, field_name_str: str, is_list: bool=False) -> None:
+    def __init__(self, fmt: str, field_names: list[str]):
         super().__init__()
-        self.fmt = fmt
+
+        if not fmt.startswith(("!", ">", "<", "@", "=")):
+            # struct.unpack needs to know what endianness to work in; default to big-endian
+            fmt = ">" + fmt
+
+        if fmt.endswith("+"):
+            # "+" suffix specifies that the resource is a list of records
+            is_list = True
+            fmt = fmt.removesuffix("+")
+        else:
+            is_list = False
+
+        self.format = fmt
         self.record_length = struct.calcsize(fmt)
-        self.field_names = field_name_str.split(",")
+        self.field_names = field_names
         self.is_list = is_list
 
-    def convert(self, res: Resource,
-                res_map: dict[bytes, dict[int, Resource]]) -> list[dict[str, bytes]] | dict[str, bytes]:
+    def convert(self, res: Resource, res_map: dict[bytes, dict[int, Resource]]) -> Any:
         if self.is_list:
             res_object = []
             assert len(res.data) % self.record_length == 0
             for i in range(len(res.data) // self.record_length):
                 res_object.append(self.parse_record(res.data, i*self.record_length))
             return res_object
-        return self.parse_record(res.data, 0)
+        else:
+            assert len(res.data) == self.record_length
+            return self.parse_record(res.data, 0)
 
-    def parse_record(self, data: bytes, offset: int) -> dict[str, bytes]:
-        record = {}
-        field_values = struct.unpack_from(self.fmt, data, offset)
-        for field_name, field_val in zip(self.field_names, field_values):
-            if field_name:
-                record[field_name] = field_val
-        return record
+    def parse_record(self, data: bytes, offset: int) -> Any:
+        values = struct.unpack_from(self.format, data, offset)
+
+        if self.field_names:
+            # We have some field names: return name-tagged values in a dict
+            record = {}
+            for field_name, field_val in zip(self.field_names, values):
+                if field_name:  # if name is missing, skip over that field
+                    record[field_name] = field_val
+            return record
+
+        elif len(values) == 1:
+            # Single-element structure, no field names: just return the naked value
+            return values[0]
+
+        else:
+            # Multiple-element structure but no field names: return the tuple
+            return values
+
 
 class SingleStringConverter(ResourceConverter):
+    """ Converts STR to a string. """
+
     def convert(self, res: Resource,
-                res_map: dict[bytes, dict[int, Resource]]) -> bytes:
+                res_map: dict[bytes, dict[int, Resource]]) -> str:
         result = Unpacker(res.data).unpack_pstr()
         return result
 
+
 class StringListConverter(ResourceConverter):
+    """ Converts STR# to a list of strings. """
+
     def convert(self, res: Resource,
-                res_map: dict[bytes, dict[int, Resource]]) -> list[bytes]:
+                res_map: dict[bytes, dict[int, Resource]]) -> list[str]:
         u = Unpacker(res.data)
         str_list = []
         count, = u.unpack(">H")
@@ -66,20 +100,18 @@ class StringListConverter(ResourceConverter):
             str_list.append(value)
         return str_list
 
+
 class TextConverter(ResourceConverter):
+    """ Converts TEXT to a string. """
+
     def convert(self, res: Resource,
                 res_map: dict[bytes, dict[int, Resource]]) -> str:
         return res.data.decode("macroman")
 
-class IcnsConverter(ResourceConverter):
-    def __init__(self) -> None:
-        super().__init__(separate_file='.icns')
-
-    def convert(self, res: Resource,
-                res_map: dict[bytes, dict[int, Resource]]) -> bytes:
-        return res.data
 
 class SoundToAiffConverter(ResourceConverter):
+    """ Converts snd to an AIFF-C file. """
+
     def __init__(self) -> None:
         super().__init__(separate_file='.aiff')
 
@@ -87,7 +119,10 @@ class SoundToAiffConverter(ResourceConverter):
                 res_map: dict[bytes, dict[int, Resource]]) -> bytes:
         return convert_snd_to_aiff(res.data, res.name)
 
+
 class PictConverter(ResourceConverter):
+    """ Converts a raster PICT to a PNG file. """
+
     def __init__(self) -> None:
         super().__init__(separate_file='.png')
 
@@ -96,7 +131,10 @@ class PictConverter(ResourceConverter):
         w, h, data = convert_pict_to_image(res.data)
         return pack_png(data, w, h)
 
+
 class CicnConverter(ResourceConverter):
+    """ Converts cicn (arbitrary-sized color icon with embedded palette) to a PNG file. """
+
     def __init__(self) -> None:
         super().__init__(separate_file='.png')
 
@@ -105,7 +143,10 @@ class CicnConverter(ResourceConverter):
         w, h, data = convert_cicn_to_image(res.data)
         return pack_png(data, w, h)
 
+
 class PpatConverter(ResourceConverter):
+    """ Converts ppat to a PNG file. """
+
     def __init__(self) -> None:
         super().__init__(separate_file='.png')
 
@@ -114,7 +155,9 @@ class PpatConverter(ResourceConverter):
         w, h, data = convert_ppat_to_image(res.data)
         return pack_png(data, w, h)
 
+
 class SicnConverter(ResourceConverter):
+    """ Converts sicn to a PNG file. """
     def __init__(self) -> None:
         super().__init__(separate_file='.png')
 
@@ -123,7 +166,10 @@ class SicnConverter(ResourceConverter):
         w, h, data = convert_sicn_to_image(res.data)
         return pack_png(data, w, h)
 
+
 class TemplateConverter(ResourceConverter):
+    """ Parses TMPL resources. """
+
     def convert(self, res: Resource,
                 res_map: dict[bytes, dict[int, Resource]]) -> list[dict[str, str | bytes]]:
         u = Unpacker(res.data)
@@ -133,6 +179,7 @@ class TemplateConverter(ResourceConverter):
             field_fourcc = u.read(4).decode('macroman')
             fields.append({"label": field_name, "type": field_fourcc})
         return fields
+
 
 class FileDumper(ResourceConverter):
     preprocess: Callable[[bytes], bytes] | None
@@ -147,7 +194,15 @@ class FileDumper(ResourceConverter):
         else:
             return res.data
 
+
 class IconConverter(ResourceConverter):
+    """
+    Converts Finder icon resources to a PNG file.
+
+    Those are fixed-size icon resources that use the default system palette
+    (icl8, ics8, icl4, ics4, ICN#, ics#).
+    """
+
     def __init__(self) -> None:
         super().__init__(separate_file='.png')
     
@@ -178,6 +233,7 @@ class IconConverter(ResourceConverter):
             image = convert_1bit_icon_to_bgra(color_icon, bw_mask, width, height)
 
         return pack_png(image, width, height)
+
 
 # See: http://www.mathemaesthetics.com/ResTemplates.html
 TMPL_types = {

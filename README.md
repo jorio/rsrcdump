@@ -113,6 +113,26 @@ You can also pass a “URL-encoded” version of the resource type name: `-i %53
 
 Same as above, but use `-x` instead of `-i`.
 
+### Custom struct converters
+
+TODO: Document this feature thoroughly. Please open an issue if you're interested in using this feature and need help with it.
+
+Here's an example that converts data from [Otto Matic](https://github.com/jorio/OttoMatic) terrain files with custom struct converters:
+
+```bash
+./rsrcdump.sh \
+  --struct "Hedr:L5i3f4i44x:vers,items,width,height,tilePages,tiles,tileSize,minY,maxY,splines,fences,uniqueST,waters" \
+  --struct "YCrd:f+" \
+  --struct "Itms:LLHBBBBH+:x,z,type,p0,p1,p2,p3,flags" \
+  --struct "Fenc:HhLhhhh+:fenceType,numNubs,,bbTop,bbLeft,bbBottom,bbRight" \
+  --struct "FnNb:ii+:x,z" \
+  --struct "Spln:HHLLLHHLhhhh+:numNubs,,,numPoints,,numItems,,,bbTop,bbLeft,bbBottom,bbRight" \
+  --struct "SpNb:ff+:x,z" \
+  --struct "SpPt:ff+:x,z" \
+  --struct "SpIt:fHBBBBH:placement,type,p0,p1,p2,p3,flags" \
+  ~/sync/projets/pangea/otto/Data/Terrain/BlobWorld.ter.rsrc
+```
+
 ## Note on AIFF-C files
 
 AIFF-C files produced by rsrcdump are 1-to-1 conversions of the `snd` resources. The sample stream inside the AIFF-C file is a verbatim copy of the `snd` resource’s sample stream, keeping the original codec intact.

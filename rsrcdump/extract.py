@@ -4,15 +4,19 @@ import os
 import base64
 import json
 
-from rsrcdump.resconverters import converters
+from rsrcdump.resconverters import ResourceConverter, converters
 from rsrcdump.textio import sanitize_type_name, sanitize_resource_name
 from rsrcdump.resfork import Resource
 
-def extract_resource_map(res_map: dict[bytes, dict[int, Resource]],
-                         outpath: str,
-                         include_types: list[bytes]=[],
-                         exclude_types: list[bytes]=[],
-                         quiet: bool=False) -> None:
+
+def extract_resource_map(
+        res_map: dict[bytes, dict[int, Resource]],
+        outpath: str,
+        include_types: list[bytes] = [],
+        exclude_types: list[bytes] = [],
+        custom_converters: dict[bytes, ResourceConverter] = {},
+        quiet: bool = False
+) -> None:
     try:
         os.mkdir(outpath)
     except FileExistsError:
@@ -29,7 +33,10 @@ def extract_resource_map(res_map: dict[bytes, dict[int, Resource]],
 
         J[res_type_key] = {}
 
-        converter = converters.get(res_type, None)
+        try:
+            converter = custom_converters[res_type]
+        except KeyError:
+            converter = converters.get(res_type, None)
 
         res_dirname = sanitize_type_name(res_type)
         res_dirpath = os.path.join(outpath, res_dirname)

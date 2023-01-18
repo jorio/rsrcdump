@@ -6,6 +6,7 @@ from rsrcdump.resfork import unpack_resfork
 from rsrcdump.adf import unpack_adf, ADF_ENTRYNUM_RESOURCEFORK
 from rsrcdump.extract import extract_resource_map
 from rsrcdump.textio import parse_type_name
+from rsrcdump.resconverters import StructConverter
 
 description = (
     "Extract resources from a Macintosh resource fork. "
@@ -25,6 +26,7 @@ parser.add_argument('-o', metavar='outpath', type=str, help="destination folder.
 parser.add_argument('--no-adf', action='store_true', help="don't interpret input file as AppleDouble")
 parser.add_argument('-i', '--include-type', action='append', metavar='type', help="only extract this resource type (four-character OSType)")
 parser.add_argument('-x', '--exclude-type', action='append', metavar='type', help="exclude this resource type (four-character OSType)")
+parser.add_argument('-s', '--struct', action='append', metavar='type:format[:fieldnames]', help="")
 args = parser.parse_args()
 
 inpath = args.file
@@ -47,10 +49,27 @@ if not outpath:
 
 include_types = []
 exclude_types = []
+struct_templates = {}
+
 if args.include_type:
     include_types = [ parse_type_name(t) for t in args.include_type ]
+
 if args.exclude_type:
     exclude_types = [ parse_type_name(t) for t in args.exclude_type ]
+
+if args.struct:
+    for template_arg in args.struct:
+        split = template_arg.split(":", 3)
+        assert len(split) >= 2
+        typestr = split[0]
+        formatstr = split[1]
+        if len(split) > 2:
+            fieldnames = split[2].split(",")
+        else:
+            fieldnames = []
+        assert typestr
+        assert formatstr
+        struct_templates[parse_type_name(typestr)] = StructConverter(formatstr, fieldnames)
 
 res_map = {}
 
@@ -72,4 +91,4 @@ if listmode:
             print(F"{typestr:4} {res.num:6} {len(res.data):8}  {res.name.decode('macroman')}")
     sys.exit(0)
 else:
-    extract_resource_map(res_map, outpath, include_types, exclude_types)
+    extract_resource_map(res_map, outpath, include_types, exclude_types, struct_templates)
