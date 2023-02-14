@@ -1,5 +1,7 @@
-from typing import Any, Callable
+from typing import Any, Callable, Generator
+from itertools import zip_longest
 
+import base64
 import struct
 
 from rsrcdump.packutils import Unpacker
@@ -7,7 +9,36 @@ from rsrcdump.pict import convert_pict_to_image, convert_cicn_to_image, convert_
 from rsrcdump.png import pack_png
 from rsrcdump.sndtoaiff import convert_snd_to_aiff
 from rsrcdump.icons import convert_4bit_icon_to_bgra, convert_8bit_icon_to_bgra, convert_1bit_icon_to_bgra
-from rsrcdump.resfork import Resource
+from rsrcdump.resfork import Resource, ResourceFork
+
+
+def split_struct_format_fields(fmt: str) -> Generator[str, None, None]:
+    repeat = 0
+
+    for c in fmt:
+        if c.isspace():
+            continue
+
+        elif c in "@!><=":
+            continue
+
+        elif c in "0123456789":
+            if repeat != 0:
+                repeat *= 10
+            repeat += ord(c) - ord('0')
+            continue
+
+        elif c.upper() in "CB?HILFQD":
+            for _ in range(max(repeat, 1)):
+                yield c
+            repeat = 0
+
+        elif c == "s":
+            yield f"{max(repeat, 1)}{c}"
+            repeat = 0
+
+        else:
+            raise ValueError(f"Unsupported struct format character '{c}'")
 
 
 class ResourceConverter:
@@ -15,20 +46,40 @@ class ResourceConverter:
 
     separate_file: str
 
-    def __init__(self, separate_file: str = "") -> None:
+    def __init__(self, separate_file: str = ""):
         self.separate_file = separate_file
+        self.json_key = "obj"
 
-    def convert(self, res: Resource, res_map: dict[bytes, dict[int, Resource]]) -> Any:
+    def unpack(self, res: Resource, fork: ResourceFork) -> Any:
         return res.data
+
+    def pack(self, obj: Any):
+        raise NotImplementedError("JSON->Binary packing not implemented in " + self.__class__.__name__)
+
+    
+class Base16Converter(ResourceConverter):
+    """ Converts arbitrary data to base-16. """
+
+    def __init__(self):
+        super().__init__()
+        self.json_key = "data"
+    
+    def unpack(self, res: Resource, fork: ResourceFork) -> Any:
+        return base64.b16encode(res.data).decode('ascii')
+
+    def pack(self, obj: Any) -> bytes:
+        assert isinstance(obj, str)
+        return base64.b16decode(obj)
 
 
 class StructConverter(ResourceConverter):
     format: str
     record_length: int
+    field_formats: list[str]
     field_names: list[str]
     is_list: bool
 
-    def __init__(self, fmt: str, field_names: list[str]):
+    def __init__(self, fmt: str, user_field_names: list[str]):
         super().__init__()
 
         if not fmt.startswith(("!", ">", "<", "@", "=")):
@@ -42,47 +93,109 @@ class StructConverter(ResourceConverter):
         else:
             is_list = False
 
+        self.field_formats = list(split_struct_format_fields(fmt))
         self.format = fmt
         self.record_length = struct.calcsize(fmt)
-        self.field_names = field_names
         self.is_list = is_list
+        self.is_scalar = len(self.field_formats) == 1
 
-    def convert(self, res: Resource, res_map: dict[bytes, dict[int, Resource]]) -> Any:
+        # Make field names match amount of fields in fmt
+        self.field_names = []
+        if user_field_names:
+            user_field_names_i = 0
+            for field_number, field_format in enumerate(split_struct_format_fields(fmt)):
+                fallback = f".field{field_number}"
+                if user_field_names_i < len(user_field_names):
+                    name = user_field_names[user_field_names_i]
+                    if not name:
+                        name = fallback
+                    user_field_names_i += 1
+                else:
+                    name = fallback
+                self.field_names.append(name)
+
+    def unpack(self, res: Resource, fork: ResourceFork) -> Any:
         if self.is_list:
             res_object = []
+
+            if len(res.data) % self.record_length != 0:
+                raise ValueError(f"The length of {res.desc()} ({len(res.data)} bytes) isn't a multiple of the struct format for this resource type ({self.record_length} bytes)")
+
             assert len(res.data) % self.record_length == 0
             for i in range(len(res.data) // self.record_length):
-                res_object.append(self.parse_record(res.data, i*self.record_length))
+                res_object.append(self._unpack_record(res.data, i*self.record_length))
             return res_object
-        else:
-            assert len(res.data) == self.record_length
-            return self.parse_record(res.data, 0)
 
-    def parse_record(self, data: bytes, offset: int) -> Any:
+        else:
+            if len(res.data) != self.record_length:
+                raise ValueError(f"The length of {res.desc()} ({len(res.data)} bytes) doesn't match the struct format for this resource type ({self.record_length} bytes)")
+
+            return self._unpack_record(res.data, 0)
+
+    def _unpack_record(self, data: bytes, offset: int) -> Any:
         values = struct.unpack_from(self.format, data, offset)
 
         if self.field_names:
             # We have some field names: return name-tagged values in a dict
+            assert len(self.field_names) == len(values)
             record = {}
-            for field_name, field_val in zip(self.field_names, values):
-                if field_name:  # if name is missing, skip over that field
-                    record[field_name] = field_val
+            for name, value in zip(self.field_names, values):
+                record[name] = value
             return record
 
-        elif len(values) == 1:
+        elif self.is_scalar:
             # Single-element structure, no field names: just return the naked value
+            assert len(values) == 1
             return values[0]
 
         else:
             # Multiple-element structure but no field names: return the tuple
             return values
 
+    def pack(self, obj: Any) -> bytes:
+        if not self.is_list:
+            return self._pack_record(obj)
+        else:
+            assert isinstance(obj, list)
+            buf = b""
+            for item in obj:
+                buf += self._pack_record(item)
+            return buf
+
+    def _pack_record(self, json_obj: Any) -> bytes:
+        def process_json_field(_field_format, _field_value):
+            if _field_format.endswith("s"):
+                return base64.b16decode(_field_value)
+            else:
+                return _field_value
+
+        if self.is_scalar:
+            assert not isinstance(json_obj, list) and not isinstance(json_obj, dict)
+            value = process_json_field(self.field_formats[0], json_obj)
+            return struct.pack(self.format, value)
+
+        elif self.field_names:
+            assert isinstance(json_obj, dict)
+            values = []
+            for field_format, field_name in zip(self.field_formats, self.field_names):
+                value = json_obj[field_name]
+                value = process_json_field(field_format, value)
+                values.append(value)
+            return struct.pack(self.format, *values)
+
+        else:
+            assert isinstance(json_obj, list)
+            values = []
+            for field_format, value in zip(self.field_formats, json_obj):
+                value = process_json_field(field_format, value)
+                values.append(value)
+            return struct.pack(self.format, *values)
+
 
 class SingleStringConverter(ResourceConverter):
     """ Converts STR to a string. """
 
-    def convert(self, res: Resource,
-                res_map: dict[bytes, dict[int, Resource]]) -> str:
+    def unpack(self, res: Resource, fork: ResourceFork) -> str:
         result = Unpacker(res.data).unpack_pstr()
         return result
 
@@ -90,8 +203,7 @@ class SingleStringConverter(ResourceConverter):
 class StringListConverter(ResourceConverter):
     """ Converts STR# to a list of strings. """
 
-    def convert(self, res: Resource,
-                res_map: dict[bytes, dict[int, Resource]]) -> list[str]:
+    def unpack(self, res: Resource, fork: ResourceFork) -> list[str]:
         u = Unpacker(res.data)
         str_list = []
         count, = u.unpack(">H")
@@ -104,8 +216,7 @@ class StringListConverter(ResourceConverter):
 class TextConverter(ResourceConverter):
     """ Converts TEXT to a string. """
 
-    def convert(self, res: Resource,
-                res_map: dict[bytes, dict[int, Resource]]) -> str:
+    def unpack(self, res: Resource, fork: ResourceFork) -> str:
         return res.data.decode("macroman")
 
 
@@ -115,8 +226,7 @@ class SoundToAiffConverter(ResourceConverter):
     def __init__(self) -> None:
         super().__init__(separate_file='.aiff')
 
-    def convert(self, res: Resource,
-                res_map: dict[bytes, dict[int, Resource]]) -> bytes:
+    def unpack(self, res: Resource, fork: ResourceFork) -> bytes:
         return convert_snd_to_aiff(res.data, res.name)
 
 
@@ -126,8 +236,7 @@ class PictConverter(ResourceConverter):
     def __init__(self) -> None:
         super().__init__(separate_file='.png')
 
-    def convert(self, res: Resource,
-                res_map: dict[bytes, dict[int, Resource]]) -> bytes:
+    def unpack(self, res: Resource, fork: ResourceFork) -> bytes:
         w, h, data = convert_pict_to_image(res.data)
         return pack_png(data, w, h)
 
@@ -138,8 +247,7 @@ class CicnConverter(ResourceConverter):
     def __init__(self) -> None:
         super().__init__(separate_file='.png')
 
-    def convert(self, res: Resource,
-                res_map: dict[bytes, dict[int, Resource]]) -> bytes:
+    def unpack(self, res: Resource, fork: ResourceFork) -> bytes:
         w, h, data = convert_cicn_to_image(res.data)
         return pack_png(data, w, h)
 
@@ -150,8 +258,7 @@ class PpatConverter(ResourceConverter):
     def __init__(self) -> None:
         super().__init__(separate_file='.png')
 
-    def convert(self, res: Resource,
-                res_map: dict[bytes, dict[int, Resource]]) -> bytes:
+    def unpack(self, res: Resource, fork: ResourceFork) -> bytes:
         w, h, data = convert_ppat_to_image(res.data)
         return pack_png(data, w, h)
 
@@ -161,8 +268,7 @@ class SicnConverter(ResourceConverter):
     def __init__(self) -> None:
         super().__init__(separate_file='.png')
 
-    def convert(self, res: Resource,
-                res_map: dict[bytes, dict[int, Resource]]) -> bytes:
+    def unpack(self, res: Resource, fork: ResourceFork) -> bytes:
         w, h, data = convert_sicn_to_image(res.data)
         return pack_png(data, w, h)
 
@@ -170,8 +276,7 @@ class SicnConverter(ResourceConverter):
 class TemplateConverter(ResourceConverter):
     """ Parses TMPL resources. """
 
-    def convert(self, res: Resource,
-                res_map: dict[bytes, dict[int, Resource]]) -> list[dict[str, str | bytes]]:
+    def unpack(self, res: Resource, fork: ResourceFork) -> list[dict[str, str | bytes]]:
         u = Unpacker(res.data)
         fields = []
         while not u.eof():
@@ -188,7 +293,7 @@ class FileDumper(ResourceConverter):
         super().__init__(extension)
         self.preprocess = preprocess
 
-    def convert(self, res: Resource, res_map: dict[bytes, dict[int, Resource]]) -> bytes:
+    def unpack(self, res: Resource, fork: ResourceFork) -> bytes:
         if self.preprocess:
             return self.preprocess(res.data)
         else:
@@ -206,8 +311,7 @@ class IconConverter(ResourceConverter):
     def __init__(self) -> None:
         super().__init__(separate_file='.png')
     
-    def convert(self, res: Resource,
-                res_map: dict[bytes, dict[int, Resource]]) -> bytes:
+    def unpack(self, res: Resource, fork: ResourceFork) -> bytes:
         if res.type in [b'icl8', b'icl4', b'ICN#']:
             width, height = 32, 32
             bw_icon_type = b'ICN#'
@@ -217,8 +321,8 @@ class IconConverter(ResourceConverter):
 
         color_icon = res.data
 
-        if res.num in res_map[bw_icon_type]:
-            bw_icon = res_map[bw_icon_type][res.num].data
+        if res.num in fork.tree[bw_icon_type]:
+            bw_icon = fork.tree[bw_icon_type][res.num].data
             bw_mask = bw_icon[width*height//8:]
         else:
             print(F"[WARNING] No {bw_icon_type.decode('macroman')} mask for {res.type.decode('macroman')} #{res.num}")
@@ -247,7 +351,7 @@ TMPL_types = {
     b'TNAM': '4s',  # type name
 }
 
-converters = {
+standard_converters = {
     b'cicn': CicnConverter(),
     b'icl4': IconConverter(),
     b'icl8': IconConverter(),

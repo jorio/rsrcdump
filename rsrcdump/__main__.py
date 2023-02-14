@@ -1,12 +1,14 @@
+import base64
+import json
 import os
 import sys
 import argparse
 
-from rsrcdump.resfork import unpack_resfork
-from rsrcdump.adf import unpack_adf, ADF_ENTRYNUM_RESOURCEFORK
-from rsrcdump.extract import extract_resource_map
+from rsrcdump.resfork import ResourceFork
+from rsrcdump.adf import unpack_adf, ADF_ENTRYNUM_RESOURCEFORK, pack_adf
+from rsrcdump.jsonio import resource_fork_to_json, json_to_resource_fork
 from rsrcdump.textio import parse_type_name
-from rsrcdump.resconverters import StructConverter
+from rsrcdump.resconverters import standard_converters, StructConverter, Base16Converter
 
 description = (
     "Extract resources from a Macintosh resource fork. "
@@ -14,81 +16,201 @@ description = (
 )
 
 epilog = (
-    "When specifying an OSType (resource type name), it will be padded with "
-    "spaces if it is less than 4 characters long. You can also pass OSTypes as "
+    "When specifying a ResType (resource type name), it will be padded with "
+    "spaces if it is less than 4 characters long. You can also pass ResTypes as "
     "a URL-encoded string, e.g. '%53%54%52%20' will be interpreted as 'STR '."
 )
 
 parser = argparse.ArgumentParser(prog="rsrcdump", description=description, epilog=epilog)
-parser.add_argument('file', type=str, help="path to resource fork")
-parser.add_argument('-l', '--list', action='store_true', help="list resources on stdout instead of extracting")
-parser.add_argument('-o', metavar='outpath', type=str, help="destination folder. If omitted, will create a folder named <FILENAME>_resources in the current working directory")
-parser.add_argument('--no-adf', action='store_true', help="don't interpret input file as AppleDouble")
-parser.add_argument('-i', '--include-type', action='append', metavar='type', help="only extract this resource type (four-character OSType)")
-parser.add_argument('-x', '--exclude-type', action='append', metavar='type', help="exclude this resource type (four-character OSType)")
-parser.add_argument('-s', '--struct', action='append', metavar='type:format[:fieldnames]', help="")
+
+cmdgroup = parser.add_mutually_exclusive_group(required=True)
+
+cmdgroup.add_argument(
+    '-x', "--extract", action='store_true',
+    help="Extract resources from a resource fork.")
+
+cmdgroup.add_argument(
+    '-c', "--create", action='store_true',
+    help="Create a resource fork from a json file.")
+
+cmdgroup.add_argument(
+    '-t', "--list", action='store_true',
+    help="List the contents of a resource fork.")
+
+parser.add_argument('file', type=str, help="Path to resource fork.")
+
+parser.add_argument(
+    '-o', metavar='outpath', type=str,
+    help="Destination file. If omitted, will create a folder named <FILENAME>.json in the current working directory.")
+
+parser.add_argument(
+    '--no-adf', action='store_true',
+    help="Don't interpret input file as AppleDouble.")
+
+parser.add_argument(
+    '-i', '--include-type', action='append', metavar='type',
+    help=("Only extract this resource type (four-character ResType). "
+          "You may pass this switch several times to include several ResType."))
+
+parser.add_argument(
+    '-e', '--exclude-type', action='append', metavar='type',
+    help=("Exclude this resource type (four-character ResType). "
+          "You may pass this switch several times to exclude several ResType."))
+
+parser.add_argument(
+    '-s', '--struct', action='append', metavar='SPEC',
+    help="Specify custom struct converters. See documentation for details.")
+
+parser.add_argument(
+    '-S', "--struct-file", type=str,
+    help=(
+        "Text file containing custom struct converter specifications "
+        "so you don't have to pass them all via --struct."))
+
+parser.add_argument(
+    '--encoding', type=str, default="macroman",
+    help="String encoding to use throughout the resource fork (MacRoman by default).")
+
 args = parser.parse_args()
 
 inpath = args.file
-outpath = args.o
-listmode = args.list
 
-# Generate an output path if we're not given one
-if not outpath:
-    namedfork_suffix = "/..namedfork/rsrc"
-
-    stem = inpath
-    print(stem)
-    if stem.endswith(namedfork_suffix):
-        stem = stem[:-len(namedfork_suffix)]
-    stem = os.path.basename(stem)
-
-    outpath = os.path.join(os.getcwd(), stem + "_resources")
-    if outpath.startswith("._"):
-        outpath = outpath[2:]
-
-include_types = []
-exclude_types = []
-struct_templates = {}
+only_types = []
+skip_types = []
 
 if args.include_type:
-    include_types = [ parse_type_name(t) for t in args.include_type ]
+    only_types = [parse_type_name(t) for t in args.include_type]
 
 if args.exclude_type:
-    exclude_types = [ parse_type_name(t) for t in args.exclude_type ]
+    skip_types = [parse_type_name(t) for t in args.exclude_type]
+
+converters = standard_converters.copy()
+
+struct_specs = []
+
+if args.struct_file:
+    with open(args.struct_file, "rt") as struct_file:
+        struct_specs += struct_file.readlines()
 
 if args.struct:
-    for template_arg in args.struct:
-        split = template_arg.split(":", 3)
-        assert len(split) >= 2
-        typestr = split[0]
-        formatstr = split[1]
-        if len(split) > 2:
-            fieldnames = split[2].split(",")
-        else:
-            fieldnames = []
-        assert typestr
-        assert formatstr
-        struct_templates[parse_type_name(typestr)] = StructConverter(formatstr, fieldnames)
+    struct_specs += args.struct
 
-res_map = {}
-
-with open(inpath, 'rb') as file:
-    if not args.no_adf:
-        adf_entries = unpack_adf(file.read())
-        adf_resfork = adf_entries[ADF_ENTRYNUM_RESOURCEFORK]
-        res_map = unpack_resfork(adf_resfork)
+for template_arg in struct_specs:
+    template_arg = template_arg.strip()
+    if not template_arg or template_arg.startswith("//"):  # skip blank lines
+        continue
+    split = template_arg.split(":", 3)
+    assert len(split) >= 2
+    typestr = split[0]
+    formatstr = split[1]
+    if len(split) > 2:
+        fieldnames = split[2].split(",")
     else:
-        res_map = unpack_resfork(file.read())
+        fieldnames = []
+    assert typestr
+    assert formatstr
+    converters[parse_type_name(typestr)] = StructConverter(formatstr, fieldnames)
 
-if listmode:
+
+def load_resmap():
+    with open(inpath, 'rb') as file:
+        if not args.no_adf:
+            adf_entries = unpack_adf(file.read())
+            adf_resfork = adf_entries[ADF_ENTRYNUM_RESOURCEFORK]
+            fork = ResourceFork.from_bytes(adf_resfork)
+            return fork, adf_entries
+        else:
+            fork = ResourceFork.from_bytes(file.read())
+            return fork, []
+
+
+def do_list():
+    fork, adf_entries = load_resmap()
     print(F"{'Type':4} {'ID':6} {'Size':8}  {'Name'}")
     print(F"{'-'*4} {'-'*6} {'-'*8}  {'-'*32}")
-    for res_type in sorted(res_map, key=lambda a: a.decode('macroman').upper()):
-        for res_id in sorted(res_map[res_type]):
-            res = res_map[res_type][res_id]
+    for res_type in fork.tree:
+        for res_id in fork.tree[res_type]:
+            res = fork.tree[res_type][res_id]
             typestr = res.type.decode('macroman')
             print(F"{typestr:4} {res.num:6} {len(res.data):8}  {res.name.decode('macroman')}")
-    sys.exit(0)
-else:
-    extract_resource_map(res_map, outpath, include_types, exclude_types, struct_templates)
+
+
+def do_extract():
+    outpath = args.o
+
+    # Generate an output path if we're not given one
+    if not outpath:
+        stem = inpath
+        stem = stem.removesuffix("/..namedfork/rsrc")
+        stem = stem.removesuffix(".rsrc")
+        stem = os.path.basename(stem)
+        outpath = os.path.join(os.getcwd(), stem + ".json")
+        outpath = outpath.removeprefix("._")
+
+    fork, adf_entries = load_resmap()
+
+    metadata = {}
+
+    if adf_entries:
+        metadata["adf"] = {}
+        del adf_entries[ADF_ENTRYNUM_RESOURCEFORK]
+        for adf_entry_num, adf_entry in adf_entries.items():
+            metadata["adf"][adf_entry_num] = base64.b16encode(adf_entry).decode("ascii")
+
+    resource_fork_to_json(
+        fork,
+        outpath,
+        only_types,
+        skip_types,
+        converters=converters,
+        metadata=metadata)
+
+
+def do_pack():
+    outpath = args.o
+
+    # Generate an output path if we're not given one
+    if not outpath:
+        stem = args.file
+        stem = stem.removesuffix(".json")
+        stem = os.path.basename(stem)
+        outpath = os.path.join(os.getcwd(), stem + "_regen.rsrc")
+
+    with open(inpath, "r") as json_file:
+        json_blob = json.load(json_file)
+
+    # We've got to convert the json_blob to ResMap
+    assert isinstance(json_blob, dict)
+
+    fork = json_to_resource_fork(
+        json_blob,
+        converters=converters,
+        only_types=only_types,
+        skip_types=skip_types,
+        encoding=args.encoding)
+
+    binary_fork = fork.pack()
+
+    if args.no_adf:
+        output_blob = binary_fork
+    else:
+        adf_entries = {}
+        try:
+            adf_metadata = json_blob['_metadata']['adf']
+            for adf_entry_id, adf_entry_blob in adf_metadata.items():
+                adf_entries[int(adf_entry_id)] = base64.b16decode(adf_entry_blob)
+        except KeyError:
+            pass
+        adf_entries[ADF_ENTRYNUM_RESOURCEFORK] = binary_fork
+        output_blob = pack_adf(adf_entries)
+
+    with open(outpath, "wb") as output_file:
+        output_file.write(output_blob)
+
+
+if args.list:
+    do_list()
+elif args.extract:
+    do_extract()
+elif args.create:
+    do_pack()

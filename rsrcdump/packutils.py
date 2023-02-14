@@ -14,8 +14,11 @@ class Unpacker:
         self.offset += record_length
         return fields
 
-    def seek(self, offset: int) -> None:
+    def seek(self, offset: int):
         self.offset = offset
+
+    def skip(self, n: int):
+        self.offset += n
 
     def read(self, size: int) -> bytes:
         data_slice = self.data[self.offset : self.offset + size]
@@ -23,12 +26,14 @@ class Unpacker:
         self.offset += size
         return data_slice
 
-    def unpack_pstr(self, decode: bool=True) -> str | bytes:
+    def unpack_raw_pstr(self) -> bytes:
+        length, = self.unpack(">B")
+        return self.read(length)
+
+    def unpack_pstr(self, encoding: str = 'macroman') -> str:
         length, = self.unpack(">B")
         binary_pstr = self.read(length)
-        if decode:
-            return binary_pstr.decode("macroman")
-        return binary_pstr
+        return binary_pstr.decode(encoding)
 
     def eof(self) -> bool:
         return self.offset >= len(self.data)
