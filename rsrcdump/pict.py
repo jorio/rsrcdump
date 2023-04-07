@@ -516,26 +516,29 @@ def unpack_maskrgn(mask: bytes, w: int, h: int) -> bytes:
 
 def read_pict_bits(u: Unpacker, opcode: int) -> tuple[tuple[int, int, int, int], bytes]:
     direct_bits_opcode = opcode in (Op.DirectBitsRect, Op.DirectBitsRgn)
-    region_opcode = opcode in (Op.BitsRgn, Op.PackBitsRgn)
 
+    # Skip junk pointer at beginning of DirectBitsRect/DirectBitsRgn
     if direct_bits_opcode:
-        u.read(4)  # skip junk
+        u.read(4)
 
+    # Read BitMap or PixMap
     pmh = read_bitmap_or_pixmap(u)
-    #print(pmh, pmh.frame_w, pmh.frame_h)
-    
+
+    # Read palette (if any)
     palette = None
     if not direct_bits_opcode and not isinstance(pmh, Bitmap):
         palette = read_colortable(u)
-    
+
+    # Read src/dst rectangles
     src_rect = u.unpack(">4h")
     dst_rect = u.unpack(">4h")
     #if src_rect != dst_rect or src_rect != pmh.frame_rect:
     #    raise PICTError(F"unsupported src/dst rects; s={src_rect} d={dst_rect} f={pmh.frame_rect}")
-    tm = u.read(2) # transfer mode
+    tm = u.read(2)  # transfer mode
 
+    # Read mask region, if any (xxxRgn opcodes)
     mask = None
-    if region_opcode:
+    if opcode in (Op.BitsRgn, Op.PackBitsRgn, Op.DirectBitsRgn):
         # IM:QD, page 2-7
         maskrgn_size = u.unpack(">H")[0]
         maskrgn_rect = u.unpack(">4h")
@@ -545,11 +548,13 @@ def read_pict_bits(u: Unpacker, opcode: int) -> tuple[tuple[int, int, int, int],
         if maskrgn_bits:
             mask = unpack_maskrgn(maskrgn_bits, mask_w, mask_h)
 
-    if opcode in (Op.BitsRgn, Op.DirectBitsRgn):
+    if opcode in (Op.BitsRect, Op.BitsRgn):
+        # TODO: Haven't seen one of these in the wild
         raise PICTError(f"read_pict_bits unimplemented opcode {Op(opcode).name}")
 
     bgra = read_pixmap_image_data(u, pmh, palette)
 
+    # Apply mask
     if mask:
         out = io.BytesIO()
         for b,g,r,maskbit in zip(bgra[0::4], bgra[1::4], bgra[2::4], mask):
