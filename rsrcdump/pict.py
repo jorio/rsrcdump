@@ -1,12 +1,260 @@
-from ctypes import ArgumentError
+import enum
 import io
-from dataclasses import dataclass
 import struct
+from ctypes import ArgumentError
+from dataclasses import dataclass
 
 from rsrcdump.packutils import Unpacker
+from rsrcdump.structtemplate import StructTemplate
 
-class PICTError(Exception):
+
+class PICTError(BaseException):
     pass
+
+
+# IM:QD Table A-3 "Opcodes for version 1 pictures"
+# IM:QD Table A-2 "Opcodes for extended version 2 and version 2 pictures"
+class Op(enum.IntEnum):
+    NOP                     = 0x00
+    ClipRgn                 = 0x01
+    BkPat                   = 0x02
+    TxFont                  = 0x03
+    TxFace                  = 0x04
+    TxMode                  = 0x05
+    SpExtra                 = 0x06
+    PnSize                  = 0x07
+    PnMode                  = 0x08
+    PnPat                   = 0x09
+    FillPat                 = 0x0A
+    OvSize                  = 0x0B
+    Origin                  = 0x0C
+    TxSize                  = 0x0D
+    FgColor                 = 0x0E
+    BkColor                 = 0x0F
+
+    TxRatio                 = 0x10
+    picVersion              = 0x11
+    RGBFgCol                = 0x1A  # v2
+    RGBBkCol                = 0x1B  # v2
+    HiliteMode              = 0x1C  # v2
+    HiliteColor             = 0x1D  # v2
+    DefHilite               = 0x1E  # v2
+    OpColor                 = 0x1F  # v2
+
+    Line                    = 0x20
+    LineFrom                = 0x21
+    ShortLine               = 0x22
+    ShortLineFrom           = 0x23
+    LongText                = 0x28
+    DHText                  = 0x29
+    DVText                  = 0x2A
+    DHDVText                = 0x2B
+    fontName                = 0x2C  # v2
+    lineJustify             = 0x2D  # v2
+    glyphState              = 0x2E  # v2
+
+    frameRect               = 0x30
+    paintRect               = 0x31
+    eraseRect               = 0x32
+    invertRect              = 0x33
+    fillRect                = 0x34
+    frameSameRect           = 0x38
+    paintSameRect           = 0x39
+    eraseSameRect           = 0x3A
+    invertSameRect          = 0x3B
+    fillSameRect            = 0x3C
+
+    frameRRect              = 0x40
+    paintRRect              = 0x41
+    eraseRRect              = 0x42
+    invertRRect             = 0x43
+    fillRRect               = 0x44
+    frameSameRRect          = 0x48
+    paintSameRRect          = 0x49
+    eraseSameRRect          = 0x4A
+    invertSameRRect         = 0x4B
+    fillSameRRect           = 0x4C
+
+    frameOval               = 0x50
+    paintOval               = 0x51
+    eraseOval               = 0x52
+    invertOval              = 0x53
+    fillOval                = 0x54
+    frameSameOval           = 0x58
+    paintSameOval           = 0x59
+    eraseSameOval           = 0x5A
+    invertSameOval          = 0x5B
+    fillSameOval            = 0x5C
+
+    frameArc                = 0x60
+    paintArc                = 0x61
+    eraseArc                = 0x62
+    invertArc               = 0x63
+    fillArc                 = 0x64
+    frameSameArc            = 0x68
+    paintSameArc            = 0x69
+    eraseSameArc            = 0x6A
+    invertSameArc           = 0x6B
+    fillSameArc             = 0x6C
+
+    framePoly               = 0x70
+    paintPoly               = 0x71
+    erasePoly               = 0x72
+    invertPoly              = 0x73
+    fillPoly                = 0x74
+    frameSamePoly           = 0x78
+    paintSamePoly           = 0x79
+    eraseSamePoly           = 0x7A
+    invertSamePoly          = 0x7B
+    fillSamePoly            = 0x7C
+
+    frameRgn                = 0x80
+    paintRgn                = 0x81
+    eraseRgn                = 0x82
+    invertRgn               = 0x83
+    fillRgn                 = 0x84
+    frameSameRgn            = 0x88
+    paintSameRgn            = 0x89
+    eraseSameRgn            = 0x8A
+    invertSameRgn           = 0x8B
+    fillSameRgn             = 0x8C
+
+    BitsRect                = 0x90
+    BitsRgn                 = 0x91
+    PackBitsRect            = 0x98
+    PackBitsRgn             = 0x99
+    DirectBitsRect          = 0x9A
+    DirectBitsRgn           = 0x9B
+
+    ShortComment            = 0xA0
+    LongComment             = 0xA1
+
+    EndOfPicture            = 0xFF
+
+    CompressedQuickTime     = 0x8200  # v2
+    UncompressedQuickTime   = 0x8201  # v2
+
+
+# IM:QD Table A-2 "Opcodes for extended version 2 and version 2 pictures"
+# "len" is a special field that determines the length of the rest of the record.
+# It is used to skip the opcode.
+opcode_formats = {
+    Op.NOP                      : ">",  # empty
+    # Op.ClipRgn
+    Op.BkPat                    : ">8B",
+    Op.TxFont                   : ">H:font",
+    Op.TxFace                   : ">B:face",
+    Op.TxMode                   : ">B:mode",
+    Op.SpExtra                  : ">L:extraspace_fixed",
+    Op.PnSize                   : ">HH:v,h",
+    Op.PnMode                   : ">H:mode",
+    Op.PnPat                    : ">8B",
+    Op.FillPat                  : ">8B",
+    Op.OvSize                   : ">HH:v,h",
+    Op.Origin                   : ">HH:dh,dv",
+    Op.TxSize                   : ">H:size",
+    Op.FgColor                  : ">L:color",
+    Op.BkColor                  : ">L:color",
+
+    Op.TxRatio                  : ">HHHH:numv,numh,denomv,denomh",
+    Op.picVersion               : ">B:version",
+    Op.RGBFgCol                 : ">HHH:r,g,b",
+    Op.RGBBkCol                 : ">HHH:r,g,b",
+    Op.HiliteMode               : ">",  # empty
+    Op.HiliteColor              : ">HHH:r,g,b",
+    Op.DefHilite                : ">",  # empty
+    Op.OpColor                  : ">HHH:r,g,b",
+
+    Op.Line                     : ">HHHH:v1,h1,v2,h2",
+    Op.LineFrom                 : ">HH:v,h",
+    Op.ShortLine                : ">HHbb:v1,h1,dh,dv",
+    Op.ShortLineFrom            : ">bb:dh,dv",
+    Op.LongText                 : ">HHB:v,h,len",  # variable length
+    Op.DHText                   : ">BB:dh,len",  # variable length
+    Op.DVText                   : ">BB:dv,len",  # variable length
+    Op.DHDVText                 : ">BBB:dh,dv,len",  # variable length
+    Op.fontName                 : ">HHB:datalen,oldfontid,len",  # variable length
+    Op.lineJustify              : ">HLL:datalen,interchar_fixed,total_fixed",
+    Op.glyphState               : ">HBBBB:datalen,outlinePreferred,preserveGlyph,fractionalWidths,scalingDisabled",
+
+    Op.frameRect                : ">HHHH:t,l,b,r",
+    Op.paintRect                : ">HHHH:t,l,b,r",
+    Op.eraseRect                : ">HHHH:t,l,b,r",
+    Op.invertRect               : ">HHHH:t,l,b,r",
+    Op.fillRect                 : ">HHHH:t,l,b,r",
+    Op.frameSameRect            : ">",  # empty
+    Op.paintSameRect            : ">",  # empty
+    Op.eraseSameRect            : ">",  # empty
+    Op.invertSameRect           : ">",  # empty
+    Op.fillSameRect             : ">",  # empty
+
+    Op.frameRRect               : ">HHHH:t,l,b,r",
+    Op.paintRRect               : ">HHHH:t,l,b,r",
+    Op.eraseRRect               : ">HHHH:t,l,b,r",
+    Op.invertRRect              : ">HHHH:t,l,b,r",
+    Op.fillRRect                : ">HHHH:t,l,b,r",
+    Op.frameSameRRect           : ">",  # empty
+    Op.paintSameRRect           : ">",  # empty
+    Op.eraseSameRRect           : ">",  # empty
+    Op.invertSameRRect          : ">",  # empty
+    Op.fillSameRRect            : ">",  # empty
+
+    Op.frameOval                : ">HHHH:t,l,b,r",
+    Op.paintOval                : ">HHHH:t,l,b,r",
+    Op.eraseOval                : ">HHHH:t,l,b,r",
+    Op.invertOval               : ">HHHH:t,l,b,r",
+    Op.fillOval                 : ">HHHH:t,l,b,r",
+    Op.frameSameOval            : ">",  # empty
+    Op.paintSameOval            : ">",  # empty
+    Op.eraseSameOval            : ">",  # empty
+    Op.invertSameOval           : ">",  # empty
+    Op.fillSameOval             : ">",  # empty
+
+    Op.frameArc                 : ">HHHHHH:t,l,b,r,startAngle,arcAngle",
+    Op.paintArc                 : ">HHHHHH:t,l,b,r,startAngle,arcAngle",
+    Op.eraseArc                 : ">HHHHHH:t,l,b,r,startAngle,arcAngle",
+    Op.invertArc                : ">HHHHHH:t,l,b,r,startAngle,arcAngle",
+    Op.fillArc                  : ">HHHHHH:t,l,b,r,startAngle,arcAngle",
+    Op.frameSameArc             : ">",  # empty
+    Op.paintSameArc             : ">",  # empty
+    Op.eraseSameArc             : ">",  # empty
+    Op.invertSameArc            : ">",  # empty
+    Op.fillSameArc              : ">",  # empty
+
+    Op.framePoly                : ">H:datalen",  # INCOMPLETE struct but just enough to skip it
+    Op.paintPoly                : ">H:datalen",
+    Op.erasePoly                : ">H:datalen",
+    Op.invertPoly               : ">H:datalen",
+    Op.fillPoly                 : ">H:datalen",
+    Op.frameSamePoly            : ">",  # empty
+    Op.paintSamePoly            : ">",  # empty
+    Op.eraseSamePoly            : ">",  # empty
+    Op.invertSamePoly           : ">",  # empty
+    Op.fillSamePoly             : ">",  # empty
+
+    Op.frameRgn                 : ">H:datalen",  # INCOMPLETE struct but just enough to skip it
+    Op.paintRgn                 : ">H:datalen",
+    Op.eraseRgn                 : ">H:datalen",
+    Op.invertRgn                : ">H:datalen",
+    Op.fillRgn                  : ">H:datalen",
+    Op.frameSameRgn             : ">",  # empty
+    Op.paintSameRgn             : ">",  # empty
+    Op.eraseSameRgn             : ">",  # empty
+    Op.invertSameRgn            : ">",  # empty
+    Op.fillSameRgn              : ">",  # empty
+
+    Op.ShortComment             : ">H:kind",
+    Op.LongComment              : ">HH:kind,len",  # variable length
+    Op.CompressedQuickTime      : ">L:len",  # variable length
+    Op.UncompressedQuickTime    : ">L:len",  # variable length
+}
+
+
+opcode_templates: dict[Op, StructTemplate] = {
+    k: StructTemplate.from_template_string(v)
+    for k, v in opcode_formats.items()
+}
+
 
 class Xmap:
     rowbytes: int
@@ -35,6 +283,7 @@ class Xmap:
     def excesscolumns(self) -> int:
         return self.pixelsperrow - self.frame_w
 
+
 @dataclass
 class Bitmap(Xmap):
     rowbytes: int
@@ -44,8 +293,9 @@ class Bitmap(Xmap):
     frame_r: int
 
     @property
-    def pixelsize(self) -> int:# type: ignore
+    def pixelsize(self) -> int:
         return 1
+
 
 @dataclass
 class Pixmap(Xmap):
@@ -66,9 +316,11 @@ class Pixmap(Xmap):
     planebytes: int
     pmtable: int
 
+
 def rect_dims(rect_tuple: tuple[int, int, int, int]) -> tuple[int, int]:
     t, l, b, r = rect_tuple
     return r-l, b-t
+
 
 def unpack_bits(slice: bytes, packfmt: str, rowbytes: int) -> list[int]:
     unpacked = []
@@ -91,6 +343,7 @@ def unpack_bits(slice: bytes, packfmt: str, rowbytes: int) -> list[int]:
 
     return unpacked
 
+
 def unpack_all_rows(u: Unpacker, packfmt: str, numrows: int, rowbytes: int) -> list[int]:
     assert rowbytes >= 8, "data is unpacked if rowbytes < 8; handle this case"
 
@@ -105,6 +358,7 @@ def unpack_all_rows(u: Unpacker, packfmt: str, numrows: int, rowbytes: int) -> l
         data.extend(rowpixels)
     return data
 
+
 def unpackbw(u: Unpacker, bm: Bitmap) -> bytes:
     unpacked = unpack_all_rows(u, ">B", numrows=bm.frame_h, rowbytes=bm.rowbytes)
     dst = io.BytesIO()
@@ -118,6 +372,7 @@ def unpackbw(u: Unpacker, bm: Bitmap) -> bytes:
             else:
                 dst.write(b'\xFF\xFF\xFF\xFF')
     return dst.getvalue()
+
 
 def unpack0(u: Unpacker, pmh: Pixmap, palette: list[bytes]) -> bytes:
     unpacked = bytes(unpack_all_rows(u, ">B", numrows=pmh.frame_h, rowbytes=pmh.rowbytes))
@@ -134,6 +389,7 @@ def unpack0(u: Unpacker, pmh: Pixmap, palette: list[bytes]) -> bytes:
         dst.write(color)
     return dst.getvalue()
 
+
 # Unpack pixel type 3 (16 bits, chunky)
 def unpack3(u: Unpacker, w: int, h: int, rowbytes: int) -> bytes:
     unpacked = unpack_all_rows(u, ">H", h, rowbytes)
@@ -147,6 +403,7 @@ def unpack3(u: Unpacker, w: int, h: int, rowbytes: int) -> bytes:
         b = int( ((px >>  0) & 0b11111) * (255.0/31.0) )
         dst.write(struct.pack(">4B", b,g,r,a))
     return dst.getvalue()
+
 
 # Unpack pixel type 4 (24 or 32 bits, planar)
 def unpack4(u: Unpacker, w: int, h: int, rowbytes: int, numplanes: int) -> bytes:
@@ -172,6 +429,7 @@ def unpack4(u: Unpacker, w: int, h: int, rowbytes: int, numplanes: int) -> bytes
                 dst.write(struct.pack(">BBBB", b,g,r,a))
     return dst.getvalue()
 
+
 def read_bitmap_or_pixmap(u: Unpacker) -> Bitmap | Pixmap:
     rowbytes_flag = u.unpack(">H")[0]
     rowbytes = rowbytes_flag & 0x7FFF
@@ -179,6 +437,7 @@ def read_bitmap_or_pixmap(u: Unpacker) -> Bitmap | Pixmap:
     if is_pixmap:
         return Pixmap(rowbytes, *u.unpack("> 4h hh i ii hhhh i i 4x"))
     return Bitmap(rowbytes, *u.unpack("> 4h"))
+
 
 def read_colortable(u: Unpacker) -> list[bytes]:
     seed, flags, numcolors = u.unpack(">LHH")
@@ -213,6 +472,7 @@ def read_colortable(u: Unpacker) -> list[bytes]:
     
     return palette
 
+
 def unpack_maskrgn(mask: bytes, w: int, h: int) -> bytes:
     out = io.BytesIO()
 
@@ -246,14 +506,13 @@ def unpack_maskrgn(mask: bytes, w: int, h: int) -> bytes:
     assert len(buf) == w*h
     return buf
 
+
 def read_pict_bits(u: Unpacker, opcode: int) -> tuple[tuple[int, int, int, int], bytes]:
-    direct_bits_opcode = opcode in [0x009A, 0x009B]
-    region_opcode = opcode in [0x0091, 0x0099]
+    direct_bits_opcode = opcode in (Op.DirectBitsRect, Op.DirectBitsRgn)
+    region_opcode = opcode in (Op.BitsRgn, Op.PackBitsRgn)
 
     if direct_bits_opcode:
         u.read(4)  # skip junk
-    else:
-        pass #print("Not direct bits!")
 
     pmh = read_bitmap_or_pixmap(u)
     #print(pmh, pmh.frame_w, pmh.frame_h)
@@ -278,12 +537,11 @@ def read_pict_bits(u: Unpacker, opcode: int) -> tuple[tuple[int, int, int, int],
         maskrgn_bits = u.read(maskrgn_size - 4*2-2)
         if maskrgn_bits:
             mask = unpack_maskrgn(maskrgn_bits, mask_w, mask_h)
-            #print(binascii.hexlify(maskrgn_bits, ' ', 2))
 
-    if opcode in [0x0091, 0x009b]:
-        raise PICTError("read_pict_bits unimplemented opcode")
+    if opcode in (Op.BitsRgn, Op.DirectBitsRgn):
+        raise PICTError(f"read_pict_bits unimplemented opcode {Op(opcode).name}")
 
-    bgra = read_pixmap_image_data(u, pmh, palette)# type: ignore
+    bgra = read_pixmap_image_data(u, pmh, palette)
 
     if mask:
         out = io.BytesIO()
@@ -292,6 +550,7 @@ def read_pict_bits(u: Unpacker, opcode: int) -> tuple[tuple[int, int, int, int],
         bgra = out.getvalue()
 
     return pmh.frame_rect, bgra
+
 
 def read_pixmap_image_data(u: Unpacker, pmh: Bitmap | Pixmap, palette: list[bytes]) -> bytes:
     frame_w, frame_h = pmh.frame_w, pmh.frame_h
@@ -308,43 +567,6 @@ def read_pixmap_image_data(u: Unpacker, pmh: Bitmap | Pixmap, palette: list[byte
         return unpack4(u, frame_w, frame_h, pmh.rowbytes, pmh.cmpcount)
     raise PICTError(F"unsupported pack_type {pmh.packtype}")
 
-skip_opcodes = {
-    0x0000: (0, "NOP"),
-    0x0002: (8, "BkPat"),
-    0x0003: (2, "TxFont"),
-    0x0004: (1, "TxFace"),
-    0x0005: (2, "TxMode"),
-    0x0006: (4, "SpExtra"),
-    0x0007: (4, "PnSize"),
-    0x0008: (2, "PnMode"),
-    0x0009: (8, "PnPat"),
-    0x000A: (8, "FillPat"),
-    0x000B: (4, "OvSize"),
-    0x000C: (4, "Origin"),
-    0x000D: (2, "TxSize"),
-    0x0010: (8, "TxRatio"),
-    0x001A: (6, "RGBFgCol"),
-    0x001B: (6, "RGBBkCol"),
-    0x001E: (0, "DefHilite"),
-    0x001F: (6, "OpColor"),
-    0x0020: (8, "Line"),
-    0x0021: (4, "LineFrom"),
-    0x0022: (6, "ShortLine"),
-    0x0023: (2, "ShortLineFrom"),
-    0x0030: (8, "frameRect"),
-    0x0031: (8, "paintRect"),
-    0x0032: (8, "eraseRect"),
-    0x0033: (8, "invertRect"),
-    0x0034: (8, "fillRect"),
-    0x0038: (0, "frameSameRect"),
-    0x0048: (0, "frameSameRRect"),
-    0x0060: (12, "frameArc"),
-    0x0061: (12, "paintArc"),
-    0x0062: (12, "eraseArc"),
-    0x0063: (12, "invertArc"),
-    0x0064: (12, "fillArc"),
-    0x007C: (0, "fillSamePoly"),
-}
 
 def get_reserved_opcode_size(k: int) -> int:
     if 0x0035 <= k <= 0x0037: return 8
@@ -367,6 +589,7 @@ def get_reserved_opcode_size(k: int) -> int:
     if 0x8000 <= k <= 0x80FF: return 0
     return -1
 
+
 def convert_pict_to_image(data: bytes) -> tuple[int, int, bytes]:
     u = Unpacker(data)
     start_offset = u.offset
@@ -376,7 +599,7 @@ def convert_pict_to_image(data: bytes) -> tuple[int, int, bytes]:
 
     canvas_rect = u.unpack(">4h")
 
-    if 0x0011 != u.unpack(">h")[0]:
+    if Op.picVersion != u.unpack(">h")[0]:
         #raise PICTError("no version opcode in PICT header")
         print("!!! no version opcode in PICT header, perhaps this is a very old v1 PICT with single-byte opcodes")
         return 0, 0, b''
@@ -403,67 +626,49 @@ def convert_pict_to_image(data: bytes) -> tuple[int, int, bytes]:
             u.read(reserved_opcode_size)
             continue
 
-        if opcode in [0x0001]:  # clip
+        if opcode == Op.ClipRgn:
             length, = u.unpack(">H")
             if length != 0x0A:
                 u.read(length - 2)
             frame_rect = u.unpack(">4h")
             if frame_rect != canvas_rect:
                 print("WARNING: Clip rect different from canvas rect")
-        elif opcode in [0x0098, 0x0099, 0x009A]:  # PackBitsRect, PackBitsRgn, DirectBitsRect
+
+        elif opcode in (Op.PackBitsRect, Op.PackBitsRgn, Op.DirectBitsRect, Op.DirectBitsRgn):
             if pm:
                 print("!!! multiple raster images in PICT")
             pm_rect, pm = read_pict_bits(u, opcode)
             #if pm_rect != canvas_rect:
             #    print("WARNING: pixmap rect different from canvas rect")
-        elif opcode in [0x00A0]:  # short comment
-            u.read(2)  # kind
-        elif opcode in [0x00A1]:  # long comment
-            u.read(2)  # kind
-            length, = u.unpack(">H")
-            longcomment = u.read(length)
-            #print("*** Long Comment:", longcomment.decode('macroman'))
-        elif opcode in [0x8200, 0x8201]:  # CompressedQuickTime, UncompressedQuickTime
-            length, = u.unpack(">L")
-            u.read(length)
-        elif opcode in [0x00FF]:  # done
+
+        elif opcode == Op.EndOfPicture:  # done
             if not pm or not pm_rect:
                 print("!!! exiting PICT without a pixmap")
                 return 0, 0, b''
             pm_w, pm_h = rect_dims(pm_rect)
             return pm_w, pm_h, pm
+
         elif 0x00D0 <= opcode <= 0x00FE:  # reserved
             length, = u.unpack(">H")
             u.read(length)
-        elif opcode == 0x0028:  # LongText
-            x, y, text_length = u.unpack(">HHB")
-            text = u.read(text_length)
-            print(F"Skipping LongText: {text.decode('macroman')}")
-        elif opcode == 0x0029:  # DHText
-            dh, text_length = u.unpack(">BB")
-            text = u.read(text_length)
-            print(F"Skipping DHText  : {text.decode('macroman')}")
-        elif opcode == 0x002A:  # DVText
-            dv, text_length = u.unpack(">BB")
-            text = u.read(text_length)
-            print(F"Skipping DVText  : {text.decode('macroman')}")
-        elif opcode == 0x002B:  # DHDVText
-            dh, dv, text_length = u.unpack(">BBB")
-            text = u.read(text_length)
-            print(F"Skipping DHDVText: {text.decode('macroman')}")
-        elif opcode == 0x002C:  # fontName
-            length, old_font_id, name_length = u.unpack(">HHB")
-            font_name = u.read(name_length)
-            print(F"Skipping fontName: {font_name.decode('macroman')}")
-        elif opcode == 0x002E:  # glyphState
-            length, = u.unpack(">H")
-            u.read(length)
-        elif opcode in skip_opcodes:
-            length, opcode_name = skip_opcodes[opcode]
-            #print(F"PICT: Skipping opcode 0x{opcode:04x} {opcode_name} of size {length} at offset {u.offset}")
-            u.read(length)
+
+        elif opcode in opcode_templates:
+            # Skip opcode
+            # print(F"PICT: Skipping opcode 0x{opcode:04x} {Op(opcode).name} at offset {u.offset}")
+
+            template = opcode_templates[opcode]
+            values = u.unpack(template.format)
+            annotated = template.tag_values(values)
+
+            # Skip rest of variable-length records
+            if "len" in annotated:
+                u.skip(annotated["len"])
+            elif "datalen" in annotated:
+                u.skip(annotated["datalen"] - template.record_length)
+
         else:
             raise PICTError(F"unsupported PICT opcode 0x{opcode:04x}")
+
 
 def convert_to_8bit(raw: bytes, pixelsize: int) -> bytes:
     if pixelsize == 8:
@@ -496,6 +701,7 @@ def convert_to_8bit(raw: bytes, pixelsize: int) -> bytes:
 
     return out.getvalue()
 
+
 def trim_excess_columns_8bit(raw8: bytes, pm: Xmap) -> bytes:
     w = pm.frame_w
     h = pm.frame_h
@@ -506,6 +712,7 @@ def trim_excess_columns_8bit(raw8: bytes, pm: Xmap) -> bytes:
     for y in range(h):
         out.write(raw8[y*(w+excess) : y*(w+excess) + w])
     return out.getvalue()
+
 
 def convert_cicn_to_image(data: bytes) -> tuple[int, int, bytes]:
     u = Unpacker(data)
@@ -552,6 +759,7 @@ def convert_cicn_to_image(data: bytes) -> tuple[int, int, bytes]:
 
     return iconpm.frame_w, iconpm.frame_h, dst.getvalue()
 
+
 def convert_ppat_to_image(data: bytes) -> tuple[int, int, bytes]:
     # IM:QD page 4-103
     u = Unpacker(data)
@@ -584,6 +792,7 @@ def convert_ppat_to_image(data: bytes) -> tuple[int, int, bytes]:
     for px in image8:
         bgra.write(palette[px])
     return pm.frame_w, pm.frame_h, bgra.getvalue()
+
 
 def convert_sicn_to_image(data: bytes) -> tuple[int, int, bytes]:
     num_icons = len(data) // 32

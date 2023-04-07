@@ -96,20 +96,9 @@ if args.struct:
     struct_specs += args.struct
 
 for template_arg in struct_specs:
-    template_arg = template_arg.strip()
-    if not template_arg or template_arg.startswith("//"):  # skip blank lines
-        continue
-    split = template_arg.split(":", 3)
-    assert len(split) >= 2
-    typestr = split[0]
-    formatstr = split[1]
-    if len(split) > 2:
-        fieldnames = split[2].split(",")
-    else:
-        fieldnames = []
-    assert typestr
-    assert formatstr
-    converters[parse_type_name(typestr)] = StructConverter(formatstr, fieldnames)
+    converter, restype = StructConverter.from_template_string_with_typename(template_arg)
+    if converter:
+        converters[restype] = converter
 
 
 def load_resmap():

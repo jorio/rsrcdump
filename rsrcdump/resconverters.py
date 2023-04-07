@@ -1,44 +1,14 @@
-from typing import Any, Callable, Generator
-from itertools import zip_longest
-
 import base64
-import struct
+from typing import Any, Callable
 
+from rsrcdump.icons import convert_4bit_icon_to_bgra, convert_8bit_icon_to_bgra, convert_1bit_icon_to_bgra
 from rsrcdump.packutils import Unpacker
 from rsrcdump.pict import convert_pict_to_image, convert_cicn_to_image, convert_ppat_to_image, convert_sicn_to_image
 from rsrcdump.png import pack_png
-from rsrcdump.sndtoaiff import convert_snd_to_aiff
-from rsrcdump.icons import convert_4bit_icon_to_bgra, convert_8bit_icon_to_bgra, convert_1bit_icon_to_bgra
 from rsrcdump.resfork import Resource, ResourceFork
-
-
-def split_struct_format_fields(fmt: str) -> Generator[str, None, None]:
-    repeat = 0
-
-    for c in fmt:
-        if c.isspace():
-            continue
-
-        elif c in "@!><=":
-            continue
-
-        elif c in "0123456789":
-            if repeat != 0:
-                repeat *= 10
-            repeat += ord(c) - ord('0')
-            continue
-
-        elif c.upper() in "CB?HILFQD":
-            for _ in range(max(repeat, 1)):
-                yield c
-            repeat = 0
-
-        elif c == "s":
-            yield f"{max(repeat, 1)}{c}"
-            repeat = 0
-
-        else:
-            raise ValueError(f"Unsupported struct format character '{c}'")
+from rsrcdump.sndtoaiff import convert_snd_to_aiff
+from rsrcdump.structtemplate import StructTemplate
+from rsrcdump.textio import parse_type_name
 
 
 class ResourceConverter:
@@ -73,123 +43,51 @@ class Base16Converter(ResourceConverter):
 
 
 class StructConverter(ResourceConverter):
-    format: str
-    record_length: int
-    field_formats: list[str]
-    field_names: list[str]
-    is_list: bool
+    @staticmethod
+    def from_template_string_with_typename(template_arg: str):
+        template_arg = template_arg.strip()
+        if not template_arg or template_arg.startswith("//"):  # skip blank lines
+            return None, None
 
-    def __init__(self, fmt: str, user_field_names: list[str]):
+        split = template_arg.split(":", 1)
+        assert len(split) >= 2
+
+        restype = parse_type_name(split[0])
+        formatstr = split[1]
+        template = StructTemplate.from_template_string(formatstr)
+        return StructConverter(template), restype
+
+    def __init__(self, template: StructTemplate):
         super().__init__()
-
-        if not fmt.startswith(("!", ">", "<", "@", "=")):
-            # struct.unpack needs to know what endianness to work in; default to big-endian
-            fmt = ">" + fmt
-
-        if fmt.endswith("+"):
-            # "+" suffix specifies that the resource is a list of records
-            is_list = True
-            fmt = fmt.removesuffix("+")
-        else:
-            is_list = False
-
-        self.field_formats = list(split_struct_format_fields(fmt))
-        self.format = fmt
-        self.record_length = struct.calcsize(fmt)
-        self.is_list = is_list
-        self.is_scalar = len(self.field_formats) == 1
-
-        # Make field names match amount of fields in fmt
-        self.field_names = []
-        if user_field_names:
-            user_field_names_i = 0
-            for field_number, field_format in enumerate(split_struct_format_fields(fmt)):
-                fallback = f".field{field_number}"
-                if user_field_names_i < len(user_field_names):
-                    name = user_field_names[user_field_names_i]
-                    if not name:
-                        name = fallback
-                    user_field_names_i += 1
-                else:
-                    name = fallback
-                self.field_names.append(name)
+        self.template = template
 
     def unpack(self, res: Resource, fork: ResourceFork) -> Any:
-        if self.is_list:
+        template = self.template
+
+        if template.is_list:
             res_object = []
 
-            if len(res.data) % self.record_length != 0:
-                raise ValueError(f"The length of {res.desc()} ({len(res.data)} bytes) isn't a multiple of the struct format for this resource type ({self.record_length} bytes)")
+            if len(res.data) % template.record_length != 0:
+                raise ValueError(f"The length of {res.desc()} ({len(res.data)} bytes) "
+                                 f"isn't a multiple of the struct format for this resource type "
+                                 f"({template.record_length} bytes)")
 
-            assert len(res.data) % self.record_length == 0
-            for i in range(len(res.data) // self.record_length):
-                res_object.append(self._unpack_record(res.data, i*self.record_length))
+            assert len(res.data) % template.record_length == 0
+            for i in range(len(res.data) // template.record_length):
+                record = template.unpack_record(res.data, i * template.record_length)
+                res_object.append(record)
             return res_object
 
         else:
-            if len(res.data) != self.record_length:
-                raise ValueError(f"The length of {res.desc()} ({len(res.data)} bytes) doesn't match the struct format for this resource type ({self.record_length} bytes)")
+            if len(res.data) != template.record_length:
+                raise ValueError(f"The length of {res.desc()} ({len(res.data)} bytes) "
+                                 f"doesn't match the struct format for this resource type "
+                                 f"({template.record_length} bytes)")
 
-            return self._unpack_record(res.data, 0)
-
-    def _unpack_record(self, data: bytes, offset: int) -> Any:
-        values = struct.unpack_from(self.format, data, offset)
-
-        if self.field_names:
-            # We have some field names: return name-tagged values in a dict
-            assert len(self.field_names) == len(values)
-            record = {}
-            for name, value in zip(self.field_names, values):
-                record[name] = value
-            return record
-
-        elif self.is_scalar:
-            # Single-element structure, no field names: just return the naked value
-            assert len(values) == 1
-            return values[0]
-
-        else:
-            # Multiple-element structure but no field names: return the tuple
-            return values
+            return template.unpack_record(res.data, 0)
 
     def pack(self, obj: Any) -> bytes:
-        if not self.is_list:
-            return self._pack_record(obj)
-        else:
-            assert isinstance(obj, list)
-            buf = b""
-            for item in obj:
-                buf += self._pack_record(item)
-            return buf
-
-    def _pack_record(self, json_obj: Any) -> bytes:
-        def process_json_field(_field_format, _field_value):
-            if _field_format.endswith("s"):
-                return base64.b16decode(_field_value)
-            else:
-                return _field_value
-
-        if self.is_scalar:
-            assert not isinstance(json_obj, list) and not isinstance(json_obj, dict)
-            value = process_json_field(self.field_formats[0], json_obj)
-            return struct.pack(self.format, value)
-
-        elif self.field_names:
-            assert isinstance(json_obj, dict)
-            values = []
-            for field_format, field_name in zip(self.field_formats, self.field_names):
-                value = json_obj[field_name]
-                value = process_json_field(field_format, value)
-                values.append(value)
-            return struct.pack(self.format, *values)
-
-        else:
-            assert isinstance(json_obj, list)
-            values = []
-            for field_format, value in zip(self.field_formats, json_obj):
-                value = process_json_field(field_format, value)
-                values.append(value)
-            return struct.pack(self.format, *values)
+        return self.template.pack(obj)
 
 
 class SingleStringConverter(ResourceConverter):
