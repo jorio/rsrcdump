@@ -345,7 +345,10 @@ def unpack_bits(slice: bytes, packfmt: str, rowbytes: int) -> list[int]:
 
 
 def unpack_all_rows(u: Unpacker, packfmt: str, numrows: int, rowbytes: int) -> list[int]:
-    assert rowbytes >= 8, "data is unpacked if rowbytes < 8; handle this case"
+    # Data is unpacked if rowbytes < 8
+    if rowbytes < 8:
+        assert packfmt == ">B"
+        return list(u.read(rowbytes * numrows))
 
     data = []
     for y in range(numrows):
@@ -548,10 +551,6 @@ def read_pict_bits(u: Unpacker, opcode: int) -> tuple[tuple[int, int, int, int],
         if maskrgn_bits:
             mask = unpack_maskrgn(maskrgn_bits, mask_w, mask_h)
 
-    if opcode in (Op.BitsRect, Op.BitsRgn):
-        # TODO: Haven't seen one of these in the wild
-        raise PICTError(f"read_pict_bits unimplemented opcode {Op(opcode).name}")
-
     bgra = read_pixmap_image_data(u, pmh, palette)
 
     # Apply mask
@@ -611,30 +610,43 @@ def convert_pict_to_image(data: bytes) -> tuple[int, int, bytes]:
 
     canvas_rect = u.unpack(">4h")
 
-    if Op.picVersion != u.unpack(">h")[0]:
-        #raise PICTError("no version opcode in PICT header")
-        print("!!! no version opcode in PICT header, perhaps this is a very old v1 PICT with single-byte opcodes")
-        return 0, 0, b''
-    if 0x02 != u.unpack(">B")[0]:
-        raise PICTError("unsupported PICT version")
-    if 0xFF != u.unpack(">B")[0]:
-        raise PICTError("bad PICT header")
+    # Determine version
+    if Op.picVersion == u.unpack(">B")[0]:
+        if 0x01 != u.unpack(">B")[0]:
+            raise PICTError("unsupported PICT version (expected 1)")
+        version = 1
+    else:
+        u.skip(-1)  # rewind
+        if Op.picVersion != u.unpack(">H")[0]:
+            raise PICTError("bad v2 PICT header")
+        if 0x02 != u.unpack(">B")[0]:
+            raise PICTError("unsupported PICT version")
+        if 0xFF != u.unpack(">B")[0]:
+            raise PICTError("bad PICT header")
+        version = 2
 
     pm = None
     pm_rect = None
 
     while True:
-        # align position to short
-        if 1 == (u.offset - start_offset) % 2:
-            u.read(1)
+        # align position to short (v2 PICT only)
+        if version == 2 and 1 == (u.offset - start_offset) % 2:
+            u.skip(1)
 
-        opcode, = u.unpack(">H")
-        #print(F"Opcode {opcode:04x} at offset {u.offset}")
+        if version == 1:
+            opcode, = u.unpack(">B")
+        else:
+            opcode, = u.unpack(">H")
+
+        try:
+            opcode_name = Op(opcode).name
+        except ValueError:
+            opcode_name = f"${opcode:04x}"
+        # print(F"Opcode {opcode_name} at offset {u.offset}")
 
         # skip reserved opcodes
         reserved_opcode_size = get_reserved_opcode_size(opcode)
         if reserved_opcode_size >= 0:
-            #print(F"PICT: Skipping reserved opcode 0x{opcode:04x} of size {reserved_opcode_size} (offset: {u.offset})")
             u.read(reserved_opcode_size)
             continue
 
@@ -644,9 +656,11 @@ def convert_pict_to_image(data: bytes) -> tuple[int, int, bytes]:
                 u.read(length - 2)
             frame_rect = u.unpack(">4h")
             if frame_rect != canvas_rect:
-                print("WARNING: Clip rect different from canvas rect")
+                print("!!! clip rect different from canvas rect")
 
-        elif opcode in (Op.PackBitsRect, Op.PackBitsRgn, Op.DirectBitsRect, Op.DirectBitsRgn):
+        elif opcode in (Op.BitsRect, Op.BitsRgn,
+                        Op.PackBitsRect, Op.PackBitsRgn,
+                        Op.DirectBitsRect, Op.DirectBitsRgn):
             if pm:
                 print("!!! multiple raster images in PICT")
             pm_rect, pm = read_pict_bits(u, opcode)
@@ -666,7 +680,8 @@ def convert_pict_to_image(data: bytes) -> tuple[int, int, bytes]:
 
         elif opcode in opcode_templates:
             # Skip opcode
-            # print(F"PICT: Skipping opcode 0x{opcode:04x} {Op(opcode).name} at offset {u.offset}")
+            if opcode not in (Op.LongComment, Op.LongText, Op.ShortComment):
+                print(F"!!! skipping PICT opcode {opcode_name} at offset {u.offset}")
 
             template = opcode_templates[opcode]
             values = u.unpack(template.format)
@@ -674,12 +689,16 @@ def convert_pict_to_image(data: bytes) -> tuple[int, int, bytes]:
 
             # Skip rest of variable-length records
             if "len" in annotated:
+                # if opcode in (Op.LongText, Op.LongComment):
+                #     text = u.read(annotated["len"]).decode("macroman", "replace")
+                #     print(F"{opcode_name} text contents: {text}")
+                #     continue
                 u.skip(annotated["len"])
             elif "datalen" in annotated:
                 u.skip(annotated["datalen"] - template.record_length)
 
         else:
-            raise PICTError(F"unsupported PICT opcode 0x{opcode:04x}")
+            raise PICTError(F"unsupported PICT opcode {opcode_name}")
 
 
 def convert_to_8bit(raw: bytes, pixelsize: int) -> bytes:
