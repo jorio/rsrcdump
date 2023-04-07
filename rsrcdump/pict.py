@@ -392,16 +392,23 @@ def unpack0(u: Unpacker, pmh: Pixmap, palette: list[bytes]) -> bytes:
 
 # Unpack pixel type 3 (16 bits, chunky)
 def unpack3(u: Unpacker, w: int, h: int, rowbytes: int) -> bytes:
+    assert (rowbytes % 2) == 0
+    assert w * 2 <= rowbytes
+
     unpacked = unpack_all_rows(u, ">H", h, rowbytes)
-    if len(unpacked) != w*h:
+    if len(unpacked) != h * (rowbytes//2):
         raise PICTError("unpack3: unexpected item count")
+
     dst = io.BytesIO()
-    for px in unpacked:
-        a = 0xFF
-        r = int( ((px >> 10) & 0b11111) * (255.0/31.0) )
-        g = int( ((px >>  5) & 0b11111) * (255.0/31.0) )
-        b = int( ((px >>  0) & 0b11111) * (255.0/31.0) )
-        dst.write(struct.pack(">4B", b,g,r,a))
+    for y in range(h):
+        rowoffset = y * (rowbytes//2)
+        for x in range(w):
+            p = unpacked[rowoffset + x]
+            a = 0xFF
+            r = int(((p >> 10) & 0b11111) * (255.0/31.0))
+            g = int(((p >>  5) & 0b11111) * (255.0/31.0))
+            b = int(((p >>  0) & 0b11111) * (255.0/31.0))
+            dst.write(struct.pack(">4B", b,g,r,a))
     return dst.getvalue()
 
 
