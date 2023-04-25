@@ -226,7 +226,6 @@ You’ll have good results with ffmpeg or Audacity. Other audio editors may have
 - Compressed resources are not supported.
 - PICT conversion:
     - Only raster images are supported
-    - Multiple raster images in a single PICT aren’t supported
     - Vector and text opcodes not supported.
     - QuickTime-compressed images not supported.
 - `--create` doesn’t support external files (e.g. you can’t create a resource fork of PICTs from PNG files).

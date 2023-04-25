@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import enum
 import io
 import struct
@@ -10,6 +12,39 @@ from rsrcdump.structtemplate import StructTemplate
 
 class PICTError(BaseException):
     pass
+
+
+@dataclass(frozen=True)
+class PICTRect:
+    top: int
+    left: int
+    bottom: int
+    right: int
+
+    @property
+    def width(self):
+        return self.right - self.left
+
+    @property
+    def height(self):
+        return self.bottom - self.top
+
+    def offset(self, dy: int = 0, dx: int = 0) -> PICTRect:
+        return PICTRect(self.top + dy, self.left + dx, self.bottom + dy, self.right + dx)
+
+    def intersect(self, r: PICTRect):
+        t = max(self.top, r.top)
+        l = max(self.left, r.left)
+        b = min(self.bottom, r.bottom)
+        r = min(self.right, r.right)
+
+        b = max(t, b)
+        r = max(l, r)
+
+        return PICTRect(t, l, b, r)
+
+    def __repr__(self) -> str:
+        return f"({self.left},{self.top} {self.width}x{self.height})"
 
 
 # IM:QD Table A-3 "Opcodes for version 1 pictures"
@@ -263,17 +298,18 @@ class Xmap:
     frame_l: int
     frame_b: int
     frame_r: int
-    @property
-    def frame_w(self) -> int:
-        return self.frame_r - self.frame_l
 
     @property
-    def frame_h(self) -> int:
-        return self.frame_b - self.frame_t
+    def frame_rect(self) -> PICTRect:
+        return PICTRect(self.frame_t, self.frame_l, self.frame_b, self.frame_r)
 
     @property
-    def frame_rect(self) -> tuple[int, int, int, int]:
-        return (self.frame_t, self.frame_l, self.frame_b, self.frame_r)
+    def width(self) -> int:
+        return self.frame_rect.width
+
+    @property
+    def height(self) -> int:
+        return self.frame_rect.height
 
     @property
     def pixelsperrow(self) -> int:
@@ -281,7 +317,7 @@ class Xmap:
 
     @property
     def excesscolumns(self) -> int:
-        return self.pixelsperrow - self.frame_w
+        return self.pixelsperrow - self.width
 
 
 @dataclass
@@ -315,11 +351,6 @@ class Pixmap(Xmap):
     cmpsize: int
     planebytes: int
     pmtable: int
-
-
-def rect_dims(rect_tuple: tuple[int, int, int, int]) -> tuple[int, int]:
-    t, l, b, r = rect_tuple
-    return r-l, b-t
 
 
 def unpack_bits(slice: bytes, packfmt: str, rowbytes: int) -> list[int]:
@@ -363,10 +394,10 @@ def unpack_all_rows(u: Unpacker, packfmt: str, numrows: int, rowbytes: int) -> l
 
 
 def unpackbw(u: Unpacker, bm: Bitmap) -> bytes:
-    unpacked = unpack_all_rows(u, ">B", numrows=bm.frame_h, rowbytes=bm.rowbytes)
+    unpacked = unpack_all_rows(u, ">B", numrows=bm.height, rowbytes=bm.rowbytes)
     dst = io.BytesIO()
-    for y in range(bm.frame_h):
-        for x in range(bm.frame_w):
+    for y in range(bm.height):
+        for x in range(bm.width):
             byteno = y*bm.rowbytes + x//8
             bitno = 7 - (x % 8)
             black = 0 != (((unpacked[byteno]) >> bitno) & 1)
@@ -377,13 +408,13 @@ def unpackbw(u: Unpacker, bm: Bitmap) -> bytes:
     return dst.getvalue()
 
 
-def unpack0(u: Unpacker, pmh: Pixmap, palette: list[bytes]) -> bytes:
-    unpacked = bytes(unpack_all_rows(u, ">B", numrows=pmh.frame_h, rowbytes=pmh.rowbytes))
+def unpack0(u: Unpacker, pm: Pixmap, palette: list[bytes]) -> bytes:
+    unpacked = bytes(unpack_all_rows(u, ">B", numrows=pm.height, rowbytes=pm.rowbytes))
 
-    assert len(unpacked) == pmh.rowbytes * pmh.frame_h
+    assert len(unpacked) == pm.rowbytes * pm.height
 
-    pixels8 = convert_to_8bit(unpacked, pmh.pixelsize)
-    pixels8 = trim_excess_columns_8bit(pixels8, pmh)
+    pixels8 = convert_to_8bit(unpacked, pm.pixelsize)
+    pixels8 = trim_excess_columns_8bit(pixels8, pm)
 
     dst = io.BytesIO()
     for px in pixels8:
@@ -517,7 +548,7 @@ def unpack_maskrgn(mask: bytes, w: int, h: int) -> bytes:
     return buf
 
 
-def read_pict_bits(u: Unpacker, opcode: int) -> tuple[tuple[int, int, int, int], bytes]:
+def read_pict_bits(u: Unpacker, opcode: int) -> tuple[PICTRect, bytes]:
     direct_bits_opcode = opcode in (Op.DirectBitsRect, Op.DirectBitsRgn)
 
     # Skip junk pointer at beginning of DirectBitsRect/DirectBitsRgn
@@ -525,58 +556,60 @@ def read_pict_bits(u: Unpacker, opcode: int) -> tuple[tuple[int, int, int, int],
         u.read(4)
 
     # Read BitMap or PixMap
-    pmh = read_bitmap_or_pixmap(u)
+    raster = read_bitmap_or_pixmap(u)
 
     # Read palette (if any)
     palette = None
-    if not direct_bits_opcode and not isinstance(pmh, Bitmap):
+    if not direct_bits_opcode and not isinstance(raster, Bitmap):
         palette = read_colortable(u)
 
     # Read src/dst rectangles
-    src_rect = u.unpack(">4h")
-    dst_rect = u.unpack(">4h")
-    #if src_rect != dst_rect or src_rect != pmh.frame_rect:
-    #    raise PICTError(F"unsupported src/dst rects; s={src_rect} d={dst_rect} f={pmh.frame_rect}")
-    tm = u.read(2)  # transfer mode
+    src_rect = PICTRect(*u.unpack(">4h"))
+    dst_rect = PICTRect(*u.unpack(">4h"))
+    if src_rect.width != dst_rect.width or src_rect.height != dst_rect.height:
+        print(F"!!! unsupported src/dst rects; s={src_rect} d={dst_rect} f={raster.frame_rect}")
+
+    transfer_mode = u.unpack(">h")[0]  # transfer mode
+    transfer_mode &= ~64  # ignore ditherCopy flag (IM:QD 3-10)
+    if transfer_mode != 0:
+        print(f"!!! unsupported transfer mode {transfer_mode}")
 
     # Read mask region, if any (xxxRgn opcodes)
-    mask = None
+    mask_8bit = None
     if opcode in (Op.BitsRgn, Op.PackBitsRgn, Op.DirectBitsRgn):
         # IM:QD, page 2-7
         maskrgn_size = u.unpack(">H")[0]
-        maskrgn_rect = u.unpack(">4h")
-        mask_w = maskrgn_rect[3]-maskrgn_rect[1]
-        mask_h = maskrgn_rect[2]-maskrgn_rect[0]
+        maskrgn_rect = PICTRect(*u.unpack(">4h"))
         maskrgn_bits = u.read(maskrgn_size - 4*2-2)
         if maskrgn_bits:
-            mask = unpack_maskrgn(maskrgn_bits, mask_w, mask_h)
+            mask_8bit = unpack_maskrgn(maskrgn_bits, maskrgn_rect.width, maskrgn_rect.height)
 
-    bgra = read_pixmap_image_data(u, pmh, palette)
+    bgra = read_pixmap_image_data(u, raster, palette)
 
     # Apply mask
-    if mask:
-        out = io.BytesIO()
-        for b,g,r,maskbit in zip(bgra[0::4], bgra[1::4], bgra[2::4], mask):
-            out.write(struct.pack(">BBBB", b,g,r, 0 if maskbit==0 else 0xFF))
-        bgra = out.getvalue()
+    if mask_8bit:
+        bgra = apply_8bit_mask_on_32bit_image(maskrgn_rect, mask_8bit, raster.frame_rect, bgra)
 
-    return pmh.frame_rect, bgra
+    # Crop
+    if src_rect != raster.frame_rect:
+        bgra = crop_32bit(bgra, raster.frame_rect, src_rect)
+
+    return dst_rect, bgra
 
 
-def read_pixmap_image_data(u: Unpacker, pmh: Bitmap | Pixmap, palette: list[bytes]) -> bytes:
-    frame_w, frame_h = pmh.frame_w, pmh.frame_h
-    if frame_w < 0 or frame_h < 0:
-        raise PICTError(F"illegal canvas dimensions {frame_w} {frame_h}")
+def read_pixmap_image_data(u: Unpacker, raster: Bitmap | Pixmap, palette: list[bytes]) -> bytes:
+    if raster.width < 0 or raster.height < 0:
+        raise PICTError(F"illegal bitmap/pixmap dimensions {raster.width} {raster.height}")
 
-    if isinstance(pmh, Bitmap):
-        return unpackbw(u, pmh)
-    elif pmh.packtype == 0:
-        return unpack0(u, pmh, palette)
-    elif pmh.packtype == 3:
-        return unpack3(u, frame_w, frame_h, pmh.rowbytes)
-    elif pmh.packtype == 4:
-        return unpack4(u, frame_w, frame_h, pmh.rowbytes, pmh.cmpcount)
-    raise PICTError(F"unsupported pack_type {pmh.packtype}")
+    if isinstance(raster, Bitmap):
+        return unpackbw(u, raster)
+    elif raster.packtype == 0:
+        return unpack0(u, raster, palette)
+    elif raster.packtype == 3:
+        return unpack3(u, raster.width, raster.height, raster.rowbytes)
+    elif raster.packtype == 4:
+        return unpack4(u, raster.width, raster.height, raster.rowbytes, raster.cmpcount)
+    raise PICTError(F"unsupported packtype {raster.packtype}")
 
 
 def get_reserved_opcode_size(k: int) -> int:
@@ -601,14 +634,86 @@ def get_reserved_opcode_size(k: int) -> int:
     return -1
 
 
+def crop_32bit(src_data: bytes, src_rect: PICTRect, dst_rect: PICTRect):
+    intersection = src_rect.intersect(dst_rect)
+
+    src_io = io.BytesIO(src_data)
+    dst_io = io.BytesIO()
+
+    left_offset = intersection.left - src_rect.left
+    assert left_offset >= 0, "negative left_offset when cropping!"
+
+    for y in range(intersection.height):
+        src_io.seek(4 * (y * src_rect.width + left_offset))
+        row_len = 4 * intersection.width
+        row = src_io.read(row_len)
+        assert len(row) == row_len
+        dst_io.write(row)
+
+    return dst_io.getvalue()
+
+
+def blit_32bit(src_rect: PICTRect, src_data: bytes, dst_rect: PICTRect, dst_data: bytes):
+    intersection = src_rect.intersect(dst_rect)
+
+    src_dy, src_dx = intersection.top - src_rect.top, intersection.left - src_rect.left
+    dst_dy, dst_dx = intersection.top - dst_rect.top, intersection.left - dst_rect.left
+    assert src_dy >= 0 and src_dx >= 0, "blit: negative src offset"
+    assert dst_dy >= 0 and dst_dx >= 0, "blit: negative dst offset"
+
+    src_io = io.BytesIO(src_data)
+    dst_io = io.BytesIO(dst_data)
+
+    for y in range(intersection.height):
+        src_io.seek(4 * ((src_dy + y) * src_rect.width + src_dx))
+        dst_io.seek(4 * ((dst_dy + y) * dst_rect.width + dst_dx))
+
+        row_len = 4 * intersection.width
+        row = src_io.read(row_len)
+        assert len(row) == row_len, "blit: underrun"
+
+        dst_io.write(row)
+
+    return dst_io.getvalue()
+
+
+def apply_8bit_mask_on_32bit_image(msk_rect: PICTRect, msk_data: bytes, dst_rect: PICTRect, dst_data: bytes):
+    intersection = dst_rect.intersect(msk_rect)
+
+    msk_dy, msk_dx = intersection.top - msk_rect.top, intersection.left - msk_rect.left
+    dst_dy, dst_dx = intersection.top - dst_rect.top, intersection.left - dst_rect.left
+    assert msk_dy >= 0 and msk_dx >= 0, "mask: negative msk offset"
+    assert dst_dy >= 0 and dst_dx >= 0, "mask: negative dst offset"
+
+    msk_io = io.BytesIO(msk_data)
+    dst_io = io.BytesIO(dst_data)
+
+    for y in range(intersection.height):
+        msk_io.seek(1 * ((msk_dy + y) * msk_rect.width + msk_dx))
+        dst_io.seek(4 * ((dst_dy + y) * dst_rect.width + dst_dx) + 3)  # +3: jump to alpha component in BGRA stream
+
+        for x in range(intersection.width):
+            b = msk_io.read(1)
+            assert len(b) == 1, "mask: underrun"
+            opaque = b != b'\x00'
+
+            dst_io.write(b"\xFF" if opaque else b"\x00")
+            dst_io.seek(3, io.SEEK_CUR)  # jump to alpha component in next pixel
+
+    return dst_io.getvalue()
+
+
 def convert_pict_to_image(data: bytes) -> tuple[int, int, bytes]:
     u = Unpacker(data)
     start_offset = u.offset
 
     v1_picture_size, = u.unpack(">H")  # Meaningless for "modern" picts that can easily exceed 65,535 bytes.
-    #print("v1_picture_size:", v1_picture_size)
 
-    canvas_rect = u.unpack(">4h")
+    # Get canvas dimensions
+    canvas_rect = PICTRect(*u.unpack(">4h"))
+
+    # Initialize canvas pixels
+    canvas_32bit = b"\xFF\xFF\xFF\xFF" * (canvas_rect.width * canvas_rect.height)
 
     # Determine version
     if Op.picVersion == u.unpack(">B")[0]:
@@ -624,9 +729,6 @@ def convert_pict_to_image(data: bytes) -> tuple[int, int, bytes]:
         if 0xFF != u.unpack(">B")[0]:
             raise PICTError("bad PICT header")
         version = 2
-
-    pm = None
-    pm_rect = None
 
     while True:
         # align position to short (v2 PICT only)
@@ -654,25 +756,18 @@ def convert_pict_to_image(data: bytes) -> tuple[int, int, bytes]:
             length, = u.unpack(">H")
             if length != 0x0A:
                 u.read(length - 2)
-            frame_rect = u.unpack(">4h")
+            frame_rect = PICTRect(*u.unpack(">4h"))
             if frame_rect != canvas_rect:
-                print("!!! clip rect different from canvas rect")
+                print(f"!!! clip rect {frame_rect} differs from canvas rect {canvas_rect}")
 
         elif opcode in (Op.BitsRect, Op.BitsRgn,
                         Op.PackBitsRect, Op.PackBitsRgn,
                         Op.DirectBitsRect, Op.DirectBitsRgn):
-            if pm:
-                print("!!! multiple raster images in PICT")
-            pm_rect, pm = read_pict_bits(u, opcode)
-            #if pm_rect != canvas_rect:
-            #    print("WARNING: pixmap rect different from canvas rect")
+            raster_rect, raster_32bit = read_pict_bits(u, opcode)
+            canvas_32bit = blit_32bit(raster_rect, raster_32bit, canvas_rect, canvas_32bit)
 
         elif opcode == Op.EndOfPicture:  # done
-            if not pm or not pm_rect:
-                print("!!! exiting PICT without a pixmap")
-                return 0, 0, b''
-            pm_w, pm_h = rect_dims(pm_rect)
-            return pm_w, pm_h, pm
+            break
 
         elif 0x00D0 <= opcode <= 0x00FE:  # reserved
             length, = u.unpack(">H")
@@ -680,7 +775,7 @@ def convert_pict_to_image(data: bytes) -> tuple[int, int, bytes]:
 
         elif opcode in opcode_templates:
             # Skip opcode
-            if opcode not in (Op.LongComment, Op.LongText, Op.ShortComment):
+            if opcode not in (Op.LongComment, Op.LongText, Op.ShortComment, Op.DefHilite):
                 print(F"!!! skipping PICT opcode {opcode_name} at offset {u.offset}")
 
             template = opcode_templates[opcode]
@@ -699,6 +794,8 @@ def convert_pict_to_image(data: bytes) -> tuple[int, int, bytes]:
 
         else:
             raise PICTError(F"unsupported PICT opcode {opcode_name}")
+
+    return canvas_rect.width, canvas_rect.height, canvas_32bit
 
 
 def convert_to_8bit(raw: bytes, pixelsize: int) -> bytes:
@@ -733,10 +830,10 @@ def convert_to_8bit(raw: bytes, pixelsize: int) -> bytes:
     return out.getvalue()
 
 
-def trim_excess_columns_8bit(raw8: bytes, pm: Xmap) -> bytes:
-    w = pm.frame_w
-    h = pm.frame_h
-    excess = pm.excesscolumns
+def trim_excess_columns_8bit(raw8: bytes, raster: Xmap) -> bytes:
+    w = raster.width
+    h = raster.height
+    excess = raster.excesscolumns
     if excess <= 0:
         return raw8
     out = io.BytesIO()
@@ -766,15 +863,15 @@ def convert_cicn_to_image(data: bytes) -> tuple[int, int, bytes]:
     assert isinstance(iconpm, Pixmap)
     assert isinstance(maskbm, Bitmap)
     assert isinstance(bwiconbm, Bitmap)
-    maskbits = u.read(maskbm.rowbytes * maskbm.frame_h)
-    bwiconbits = u.read(bwiconbm.rowbytes * maskbm.frame_h)
+    maskbits = u.read(maskbm.rowbytes * maskbm.height)
+    bwiconbits = u.read(bwiconbm.rowbytes * maskbm.height)
 
     mask8 = convert_to_8bit(maskbits, 1)
     bwicon8 = convert_to_8bit(bwiconbits, 1)
 
     palette = read_colortable(u)
 
-    raw = u.read(iconpm.rowbytes * iconpm.frame_h)
+    raw = u.read(iconpm.rowbytes * iconpm.height)
     raw = convert_to_8bit(raw, iconpm.pixelsize)
 
     raw = trim_excess_columns_8bit(raw, iconpm)
@@ -788,7 +885,7 @@ def convert_cicn_to_image(data: bytes) -> tuple[int, int, bytes]:
         dst.write(color[:3])
         dst.write(b'\xFF' if mask != 0 else b'\x00')
 
-    return iconpm.frame_w, iconpm.frame_h, dst.getvalue()
+    return iconpm.width, iconpm.height, dst.getvalue()
 
 
 def convert_ppat_to_image(data: bytes) -> tuple[int, int, bytes]:
@@ -822,7 +919,7 @@ def convert_ppat_to_image(data: bytes) -> tuple[int, int, bytes]:
     bgra = io.BytesIO()
     for px in image8:
         bgra.write(palette[px])
-    return pm.frame_w, pm.frame_h, bgra.getvalue()
+    return pm.width, pm.height, bgra.getvalue()
 
 
 def convert_sicn_to_image(data: bytes) -> tuple[int, int, bytes]:
