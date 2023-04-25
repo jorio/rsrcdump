@@ -164,7 +164,7 @@ def convert_snd_to_aiff(data: bytes, name: bytes) -> bytes:
     compressed_length = codec_info[compression_type].calcsize(num_channels, num_packets)
 
     if compressed_length != u.remaining():
-        print(F"[WARNING] {u.remaining() - compressed_length} trailing bytes in snd resource '{name.decode('macroman')}'!")
+        print(F"!!! {u.remaining() - compressed_length} trailing bytes in snd resource")
 
     sample_data = u.read(compressed_length)
 

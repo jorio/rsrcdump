@@ -223,7 +223,7 @@ class IconConverter(ResourceConverter):
             bw_icon = fork.tree[bw_icon_type][res.num].data
             bw_mask = bw_icon[width*height//8:]
         else:
-            print(F"[WARNING] No {bw_icon_type.decode('macroman')} mask for {res.type.decode('macroman')} #{res.num}")
+            print(F"!!! No {bw_icon_type.decode('macroman')} mask for {res.type.decode('macroman')} #{res.num}")
             bw_icon = b''
             bw_mask = b''
 

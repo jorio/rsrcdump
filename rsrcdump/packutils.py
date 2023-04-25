@@ -60,7 +60,7 @@ class WritePlaceholder:
 
     def __del__(self) -> None:
         if not self.committed:
-            print("WARNING: WritePlaceholder is being garbage-collected but was not committed")
+            print("!!! WritePlaceholder is being garbage-collected but was not committed")
 
 def pack_pstr(text: str, padding: int, encoding: str='macroman') -> bytes:
     bintext = text.encode(encoding)

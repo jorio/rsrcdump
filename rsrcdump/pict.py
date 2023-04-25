@@ -471,7 +471,7 @@ def read_colortable(u: Unpacker) -> list[bytes]:
         if colorindex == 0:
             colorindex = i
         if alreadyset[colorindex]:
-            print(F"!!! warning: color {colorindex} overwritten")
+            print(F"!!! color {colorindex} overwritten")
         alreadyset[colorindex] = True
         r,g,b = u.unpack(">HHH")
         r >>= 8
