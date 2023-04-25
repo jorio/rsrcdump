@@ -137,7 +137,7 @@ def convert_snd_to_aiff(data: bytes, name: bytes) -> bytes:
     # ----
     # Read sound header
     
-    zero, union_int, sample_rate_fixed, loop_start, loop_end, encoding, base_note = u.unpack(">iiLLLBB")
+    zero, union_int, sample_rate_fixed, loop_start, loop_end, encoding, base_note = u.unpack(">iiLLLBb")
     assert 0 == zero
 
     if encoding == kSampledSoundEncoding_stdSH:
