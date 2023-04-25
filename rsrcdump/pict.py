@@ -376,7 +376,7 @@ def unpack_bits(slice: bytes, packfmt: str, rowbytes: int) -> list[int]:
 
 
 def unpack_all_rows(u: Unpacker, packfmt: str, numrows: int, rowbytes: int) -> list[int]:
-    # Data is unpacked if rowbytes < 8
+    # Data is unpacked if rowbytes < 8 (IM:QD A-15)
     if rowbytes < 8:
         assert packfmt == ">B"
         return list(u.read(rowbytes * numrows))
@@ -410,18 +410,21 @@ def unpackbw(u: Unpacker, bm: Bitmap) -> bytes:
 
 def unpack0(u: Unpacker, pm: Pixmap, palette: list[bytes]) -> bytes:
     unpacked = bytes(unpack_all_rows(u, ">B", numrows=pm.height, rowbytes=pm.rowbytes))
-
     assert len(unpacked) == pm.rowbytes * pm.height
 
     pixels8 = convert_to_8bit(unpacked, pm.pixelsize)
     pixels8 = trim_excess_columns_8bit(pixels8, pm)
+    return convert_indexed_8bit_to_32bit(pixels8, palette)
 
-    dst = io.BytesIO()
-    for px in pixels8:
-        color = palette[px]
-        assert len(color) == 4
-        dst.write(color)
-    return dst.getvalue()
+
+# Unpack pixel type 1 (8 bits, no packing)
+def unpack1(u: Unpacker, pm: Pixmap, palette: list[bytes]) -> bytes:
+    unpacked = u.read(pm.rowbytes * pm.height)
+    assert len(unpacked) == pm.rowbytes * pm.height
+
+    pixels8 = convert_to_8bit(unpacked, pm.pixelsize)
+    pixels8 = trim_excess_columns_8bit(pixels8, pm)
+    return convert_indexed_8bit_to_32bit(pixels8, palette)
 
 
 # Unpack pixel type 3 (16 bits, chunky)
@@ -601,8 +604,14 @@ def read_pixmap_image_data(u: Unpacker, raster: Bitmap | Pixmap, palette: list[b
 
     if isinstance(raster, Bitmap):
         return unpackbw(u, raster)
+    elif raster.packtype == 1 or raster.rowbytes < 8:
+        return unpack1(u, raster, palette)
     elif raster.packtype == 0:
         return unpack0(u, raster, palette)
+    elif raster.packtype == 2:
+        raise PICTError("Packtype 2 isn't supported yet - it's so rare that I've never seen it in the wild. "
+                        "Please open an issue on https://github.com/jorio/rsrcdump and attach the rsrc file. "
+                        "Thank you!")
     elif raster.packtype == 3:
         return unpack3(u, raster.width, raster.height, raster.rowbytes)
     elif raster.packtype == 4:
@@ -836,6 +845,15 @@ def trim_excess_columns_8bit(raw8: bytes, raster: Xmap) -> bytes:
     out = io.BytesIO()
     for y in range(h):
         out.write(raw8[y*(w+excess) : y*(w+excess) + w])
+    return out.getvalue()
+
+
+def convert_indexed_8bit_to_32bit(pixels8: bytes, palette: list[bytes]) -> bytes:
+    out = io.BytesIO()
+    for px in pixels8:
+        color = palette[px]
+        assert len(color) == 4, "each color in the palette should be 4 bytes"
+        out.write(color)
     return out.getvalue()
 
 
