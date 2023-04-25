@@ -123,6 +123,8 @@ def do_list():
             typestr = res.type.decode('macroman')
             print(F"{typestr:4} {res.num:6} {len(res.data):8}  {res.name.decode('macroman')}")
 
+    return 0
+
 
 def do_extract():
     outpath = args.o
@@ -146,7 +148,7 @@ def do_extract():
         for adf_entry_num, adf_entry in adf_entries.items():
             metadata["adf"][adf_entry_num] = base64.b16encode(adf_entry).decode("ascii")
 
-    resource_fork_to_json(
+    return resource_fork_to_json(
         fork,
         outpath,
         only_types,
@@ -196,10 +198,18 @@ def do_pack():
     with open(outpath, "wb") as output_file:
         output_file.write(output_blob)
 
+    return 0
+
+
+# Non-zero result causes sys.exit(1)
+result = -1
 
 if args.list:
-    do_list()
+    result = do_list()
 elif args.extract:
-    do_extract()
+    result = do_extract()
 elif args.create:
-    do_pack()
+    result = do_pack()
+
+if result:
+    sys.exit(1)

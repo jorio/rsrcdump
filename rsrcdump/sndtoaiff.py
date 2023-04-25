@@ -109,8 +109,10 @@ def convert_snd_to_aiff(data: bytes, name: bytes) -> bytes:
 
     if fmt == kSoundResourceType_Standard:
         num_modifiers, synth_type, init_bits = u.unpack(">hHL")
-        assert 1 == num_modifiers
-        assert 5 == synth_type
+        if num_modifiers != 1:
+            raise NotImplementedError(f"Unsupported snd modifier count {num_modifiers}")
+        if synth_type != 5:
+            raise NotImplementedError(f"Unsupported snd synth type {synth_type}")
         if 0 != (init_bits & initMACE6):
             default_compression_type = b'MAC6'
         elif 0 != (init_bits & initMACE3):
@@ -119,7 +121,7 @@ def convert_snd_to_aiff(data: bytes, name: bytes) -> bytes:
         u.unpack(">2x")  # skip reference count
         default_compression_type = b'MAC3'
     else:
-        raise RuntimeError("Unsupported snd format")
+        raise ValueError(f"Unsupported snd format {fmt}")
 
     num_commands, = u.unpack(">h")
     #assert num_commands == 1
@@ -156,7 +158,7 @@ def convert_snd_to_aiff(data: bytes, name: bytes) -> bytes:
             compression_type = b'raw '
         else:
             compression_type = b'twos'  # TODO: if 16-bit, should we use 'raw ' or NONE/twos?
-        print(compression_type, codec_bit_depth, codec_info[compression_type])
+            print(compression_type, codec_bit_depth, codec_info[compression_type])
         assert codec_info[compression_type].aiff_bit_depth == codec_bit_depth
     else:
         assert False, "Unsupported snd resource encoding"

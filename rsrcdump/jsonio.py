@@ -26,7 +26,7 @@ def resource_fork_to_json(
         encoding: str = 'macroman',
         metadata: Any = None,
         quiet: bool = False,
-):
+) -> int:
 
     json_blob: dict = {'_metadata': {
         'junk1': fork.junk_nextresmap,
@@ -36,6 +36,8 @@ def resource_fork_to_json(
 
     if metadata:
         json_blob['_metadata'].update(metadata)
+
+    errors = []
 
     for res_type, res_dir in fork.tree.items():
         res_type_key = res_type.decode(encoding)
@@ -57,8 +59,6 @@ def resource_fork_to_json(
                 typestr = res.type.decode(encoding)
                 print(F"{typestr:4} {res.num:6} {len(res.data):8}  {res.name.decode('macroman')}")
 
-            obj = converter.unpack(res, fork)
-
             wrapper: dict[str, Any] = {}
             
             if res.name:
@@ -73,7 +73,19 @@ def resource_fork_to_json(
             if res.order != 0xFFFFFFFF:
                 wrapper['order'] = res.order
 
-            if converter and converter.separate_file:
+            try:
+                obj = converter.unpack(res, fork)
+                separate_file = bool(converter.separate_file)
+            except BaseException as convert_exception:
+                errors.append(f"Failed to convert {res_type.decode('macroman')} #{res_id}: {convert_exception}")
+                if not quiet:
+                    print("!!!", errors[-1])
+                wrapper['conversion_error'] = str(convert_exception)
+                # Fall back to base16
+                obj = Base16Converter().unpack(res, fork)
+                separate_file = False
+
+            if separate_file:
                 ext = converter.separate_file
                 os.makedirs(res_dirpath, exist_ok=True)
                 if res.name:
@@ -87,8 +99,6 @@ def resource_fork_to_json(
                 wrapper['file'] = F"{res_dirname}/{filename}"
                 with open(os.path.join(res_dirpath, filename), 'wb') as extfile:
                     extfile.write(obj)
-                    if not quiet:
-                        print(F"Wrote \"{os.path.relpath(extfile.name, '.')}\"")
             else:
                 wrapper[converter.json_key] = obj
 
@@ -101,6 +111,12 @@ def resource_fork_to_json(
 
         if not quiet:
             print(F"Wrote \"{os.path.relpath(file.name, '.')}\"")
+
+    # Repeat errors at end
+    for error in errors:
+        print("***", error)
+
+    return len(errors)
 
 
 def json_to_resource_fork(
