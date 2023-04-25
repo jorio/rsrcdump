@@ -514,14 +514,12 @@ def read_colortable(u: Unpacker) -> list[bytes]:
     return palette
 
 
-def unpack_maskrgn(mask: bytes, w: int, h: int) -> bytes:
+def unpack_maskrgn(rect: PICTRect, mask: bytes) -> bytes:
     out = io.BytesIO()
-
     u = Unpacker(mask)
 
-    lastrow = 0
-
-    scanline = [0] * w
+    lastrow = rect.top
+    scanline = [0x00] * rect.width
 
     while not u.eof():
         row = u.unpack(">H")[0]
@@ -539,12 +537,12 @@ def unpack_maskrgn(mask: bytes, w: int, h: int) -> bytes:
             right = u.unpack(">H")[0]
             assert right != 0x7FFF
             for x in range(left, right):
-                scanline[x] ^= 1
+                scanline[x - rect.left] ^= 0xFF
         
         lastrow = row
     
     buf = out.getvalue()
-    assert len(buf) == w*h
+    assert len(buf) == rect.width * rect.height
     return buf
 
 
@@ -582,7 +580,7 @@ def read_pict_bits(u: Unpacker, opcode: int) -> tuple[PICTRect, bytes]:
         maskrgn_rect = PICTRect(*u.unpack(">4h"))
         maskrgn_bits = u.read(maskrgn_size - 4*2-2)
         if maskrgn_bits:
-            mask_8bit = unpack_maskrgn(maskrgn_bits, maskrgn_rect.width, maskrgn_rect.height)
+            mask_8bit = unpack_maskrgn(maskrgn_rect, maskrgn_bits)
 
     bgra = read_pixmap_image_data(u, raster, palette)
 
@@ -693,11 +691,10 @@ def apply_8bit_mask_on_32bit_image(msk_rect: PICTRect, msk_data: bytes, dst_rect
         dst_io.seek(4 * ((dst_dy + y) * dst_rect.width + dst_dx) + 3)  # +3: jump to alpha component in BGRA stream
 
         for x in range(intersection.width):
-            b = msk_io.read(1)
-            assert len(b) == 1, "mask: underrun"
-            opaque = b != b'\x00'
-
-            dst_io.write(b"\xFF" if opaque else b"\x00")
+            opacity = msk_io.read(1)
+            assert len(opacity) == 1, "mask: underrun"
+            assert opacity in b"\x00\xFF"
+            dst_io.write(opacity)
             dst_io.seek(3, io.SEEK_CUR)  # jump to alpha component in next pixel
 
     return dst_io.getvalue()
