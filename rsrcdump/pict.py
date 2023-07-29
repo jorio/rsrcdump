@@ -8,6 +8,7 @@ from dataclasses import dataclass
 
 from rsrcdump.packutils import Unpacker
 from rsrcdump.structtemplate import StructTemplate
+from rsrcdump.textio import get_global_encoding
 
 
 class PICTError(BaseException):
@@ -791,7 +792,7 @@ def convert_pict_to_image(data: bytes) -> tuple[int, int, bytes]:
             # Skip rest of variable-length records
             if "len" in annotated:
                 # if opcode in (Op.LongText, Op.LongComment):
-                #     text = u.read(annotated["len"]).decode("macroman", "replace")
+                #     text = u.read(annotated["len"]).decode(get_global_encoding(), "replace")
                 #     print(F"{opcode_name} text contents: {text}")
                 #     continue
                 u.skip(annotated["len"])

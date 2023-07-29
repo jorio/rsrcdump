@@ -30,10 +30,10 @@ class Unpacker:
         length, = self.unpack(">B")
         return self.read(length)
 
-    def unpack_pstr(self, encoding: str = 'macroman') -> str:
+    def unpack_pstr(self, encoding: str = 'macroman', errors: str = 'replace') -> str:
         length, = self.unpack(">B")
         binary_pstr = self.read(length)
-        return binary_pstr.decode(encoding)
+        return binary_pstr.decode(encoding, errors)
 
     def eof(self) -> bool:
         return self.offset >= len(self.data)

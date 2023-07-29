@@ -100,7 +100,7 @@ def convert_to_ieee_extended(num: float) -> bytes:
 
     return pack(">HLL", expon & 0xFFFF, hiMant, loMant)
 
-def convert_snd_to_aiff(data: bytes, name: bytes) -> bytes:
+def convert_snd_to_aiff(data: bytes, name: str) -> bytes:
     u = Unpacker(data)
 
     fmt, = u.unpack(">H")
@@ -138,7 +138,7 @@ def convert_snd_to_aiff(data: bytes, name: bytes) -> bytes:
 
     # ----
     # Read sound header
-    
+
     zero, union_int, sample_rate_fixed, loop_start, loop_end, encoding, base_note = u.unpack(">iiLLLBb")
     assert 0 == zero
 
@@ -157,8 +157,7 @@ def convert_snd_to_aiff(data: bytes, name: bytes) -> bytes:
         if codec_bit_depth == 8:
             compression_type = b'raw '
         else:
-            compression_type = b'twos'  # TODO: if 16-bit, should we use 'raw ' or NONE/twos?
-            print(compression_type, codec_bit_depth, codec_info[compression_type])
+            compression_type = b'twos'
         assert codec_info[compression_type].aiff_bit_depth == codec_bit_depth
     else:
         assert False, "Unsupported snd resource encoding"
@@ -193,7 +192,7 @@ def pack_aiff(
         loop_start: int,
         loop_end: int,
         base_note: int,
-        name: bytes) -> bytes:
+        name: str) -> bytes:
     has_loop = (loop_end - loop_start) > 1
     codec = codec_info[codec_4cc]
 
@@ -204,7 +203,7 @@ def pack_aiff(
 
         with IFFChunkWriter(aiff, b'FVER'):
             aiff.write(pack(">L", 0xA2805140))
-        
+
         with IFFChunkWriter(aiff, b'COMM'):
             aiff.write(pack(">hLh10s4s",
                 num_channels,
@@ -233,11 +232,11 @@ def pack_aiff(
                     1 if has_loop else 0,       #sustainLoop.playMode
                     101 if has_loop else 0,     #sustainLoop.beginLoop
                     102 if has_loop else 0))    #sustainLoop.endLoop
-        
+
         if name:
             with IFFChunkWriter(aiff, b'NAME'):
-                aiff.write(name)
-        
+                aiff.write(name.encode('utf-8', 'replace'))
+
         with IFFChunkWriter(aiff, b'ANNO'):
             annotation = F"Verbatim copy of data stream from 'snd ' resource.\n" + \
                 F"MIDI base note: {int(base_note)}, sustain loop: {loop_start}-{loop_end}\n"

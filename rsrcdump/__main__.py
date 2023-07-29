@@ -7,7 +7,7 @@ import argparse
 from rsrcdump.resfork import InvalidResourceFork, ResourceFork
 from rsrcdump.adf import unpack_adf, ADF_ENTRYNUM_RESOURCEFORK, pack_adf, NotADFError
 from rsrcdump.jsonio import resource_fork_to_json, json_to_resource_fork
-from rsrcdump.textio import parse_type_name
+from rsrcdump.textio import set_global_encoding, parse_type_name
 from rsrcdump.resconverters import standard_converters, StructConverter, Base16Converter
 
 description = (
@@ -122,8 +122,7 @@ def do_list():
     for res_type in fork.tree:
         for res_id in fork.tree[res_type]:
             res = fork.tree[res_type][res_id]
-            typestr = res.type.decode('macroman')
-            print(F"{typestr:4} {res.num:6} {len(res.data):8}  {res.name.decode('macroman')}")
+            print(F"{res.type_str:4} {res.num:6} {len(res.data):8}  {res.name_str}")
 
     return 0
 
@@ -205,6 +204,9 @@ def do_pack():
 
 # Non-zero result causes sys.exit(1)
 result = -1
+
+if args.encoding:
+    set_global_encoding(args.encoding)
 
 try:
     if args.list:

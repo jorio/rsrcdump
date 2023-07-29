@@ -5,7 +5,7 @@ import os
 import json
 
 from rsrcdump.resconverters import ResourceConverter, Base16Converter
-from rsrcdump.textio import sanitize_type_name, sanitize_resource_name, parse_type_name
+from rsrcdump.textio import get_global_encoding, sanitize_type_name, sanitize_resource_name, parse_type_name
 from rsrcdump.resfork import Resource, ResourceFork
 
 
@@ -23,7 +23,6 @@ def resource_fork_to_json(
         include_types: list[bytes] = [],
         exclude_types: list[bytes] = [],
         converters: dict[bytes, ResourceConverter] = {},
-        encoding: str = 'macroman',
         metadata: Any = None,
         quiet: bool = False,
 ) -> int:
@@ -40,7 +39,7 @@ def resource_fork_to_json(
     errors = []
 
     for res_type, res_dir in fork.tree.items():
-        res_type_key = res_type.decode(encoding)
+        res_type_key = res_type.decode(get_global_encoding(), 'backslashreplace')
 
         if res_type in exclude_types:
             continue
@@ -56,13 +55,12 @@ def resource_fork_to_json(
 
         for res_id, res in res_dir.items():
             if not quiet:
-                typestr = res.type.decode(encoding)
-                print(F"{typestr:4} {res.num:6} {len(res.data):8}  {res.name.decode('macroman')}")
+                print(F"{res.type_str:4} {res.num:6} {len(res.data):8}  {res.name_str}")
 
             wrapper: dict[str, Any] = {}
-            
+
             if res.name:
-                wrapper['name'] = res.name.decode(encoding)
+                wrapper['name'] = res.name_str
 
             if res.flags != 0:
                 wrapper['flags'] = res.flags
@@ -77,7 +75,7 @@ def resource_fork_to_json(
                 obj = converter.unpack(res, fork)
                 separate_file = bool(converter.separate_file)
             except BaseException as convert_exception:
-                errors.append(f"Failed to convert {res_type.decode('macroman')} #{res_id}: {convert_exception}")
+                errors.append(f"Failed to convert {res_type_key} #{res_id}: {convert_exception}")
                 if not quiet:
                     print("!!!", errors[-1])
                 wrapper['conversion_error'] = str(convert_exception)
@@ -89,7 +87,7 @@ def resource_fork_to_json(
                 ext = converter.separate_file
                 os.makedirs(res_dirpath, exist_ok=True)
                 if res.name:
-                    sanitized_name = sanitize_resource_name(res.name.decode(encoding))
+                    sanitized_name = sanitize_resource_name(res.name_str)
                 else:
                     sanitized_name = ""
                 if sanitized_name:
@@ -124,7 +122,6 @@ def json_to_resource_fork(
         converters: dict[bytes, ResourceConverter],
         only_types: list[bytes] = [],
         skip_types: list[bytes] = [],
-        encoding: str = 'macroman'
 ) -> ResourceFork:
     assert isinstance(json_blob, dict)
 
@@ -152,7 +149,7 @@ def json_to_resource_fork(
             assert isinstance(res_blob, dict)
 
             res_num = int(res_id_str)
-            res_name = res_blob.get("name", "").encode(encoding)
+            res_name = res_blob.get("name", "").encode(get_global_encoding(), 'replace')
             res_flags = res_blob.get("flags", 0)
             res_junk = res_blob.get("junk", 0)
             res_order = res_blob.get("order", -1)

@@ -3,7 +3,7 @@ from struct import unpack_from, pack, calcsize
 from io import BytesIO
 
 from rsrcdump.packutils import Unpacker, WritePlaceholder
-from rsrcdump.textio import sanitize_type_name
+from rsrcdump.textio import get_global_encoding, sanitize_type_name
 
 
 ResType = bytes
@@ -39,8 +39,16 @@ class Resource:
     0xFFFFFFFF indicates the order is unknown (e.g. for resources that we added programmatically).
     The order is preserved so that --create can output a perfect copy of the original resource fork."""
 
-    def desc(self):
+    def desc(self) -> str:
         return f"{sanitize_type_name(self.type)}#{self.num}"
+
+    @property
+    def type_str(self, errors='replace') -> str:
+        return self.type.decode(get_global_encoding(), errors)
+
+    @property
+    def name_str(self, errors='replace') -> str:
+        return self.name.decode(get_global_encoding(), errors)
 
 
 @dataclass

@@ -8,7 +8,7 @@ from rsrcdump.png import pack_png
 from rsrcdump.resfork import Resource, ResourceFork
 from rsrcdump.sndtoaiff import convert_snd_to_aiff
 from rsrcdump.structtemplate import StructTemplate
-from rsrcdump.textio import parse_type_name
+from rsrcdump.textio import get_global_encoding, parse_type_name
 
 
 class ResourceConverter:
@@ -94,7 +94,8 @@ class SingleStringConverter(ResourceConverter):
     """ Converts STR to a string. """
 
     def unpack(self, res: Resource, fork: ResourceFork) -> str:
-        result = Unpacker(res.data).unpack_pstr()
+        u = Unpacker(res.data)
+        result = u.unpack_pstr(get_global_encoding(), 'replace')
         return result
 
 
@@ -106,7 +107,7 @@ class StringListConverter(ResourceConverter):
         str_list = []
         count, = u.unpack(">H")
         for _ in range(count):
-            value = u.unpack_pstr()
+            value = u.unpack_pstr(get_global_encoding(), 'replace')
             str_list.append(value)
         return str_list
 
@@ -115,7 +116,7 @@ class TextConverter(ResourceConverter):
     """ Converts TEXT to a string. """
 
     def unpack(self, res: Resource, fork: ResourceFork) -> str:
-        return res.data.decode("macroman")
+        return res.data.decode(get_global_encoding(), 'replace')
 
 
 class SoundToAiffConverter(ResourceConverter):
@@ -125,7 +126,7 @@ class SoundToAiffConverter(ResourceConverter):
         super().__init__(separate_file='.aiff')
 
     def unpack(self, res: Resource, fork: ResourceFork) -> bytes:
-        return convert_snd_to_aiff(res.data, res.name)
+        return convert_snd_to_aiff(res.data, res.name_str)
 
 
 class PictConverter(ResourceConverter):
@@ -178,8 +179,8 @@ class TemplateConverter(ResourceConverter):
         u = Unpacker(res.data)
         fields = []
         while not u.eof():
-            field_name = u.unpack_pstr()
-            field_fourcc = u.read(4).decode('macroman')
+            field_name = u.unpack_pstr(get_global_encoding(), 'replace')
+            field_fourcc = u.read(4).decode(get_global_encoding(), 'backslashreplace')
             fields.append({"label": field_name, "type": field_fourcc})
         return fields
 
@@ -223,7 +224,7 @@ class IconConverter(ResourceConverter):
             bw_icon = fork.tree[bw_icon_type][res.num].data
             bw_mask = bw_icon[width*height//8:]
         else:
-            print(F"!!! No {bw_icon_type.decode('macroman')} mask for {res.type.decode('macroman')} #{res.num}")
+            print(F"!!! No {bw_icon_type.decode('macroman')} mask for {res.type_str} #{res.num}")
             bw_icon = b''
             bw_mask = b''
 
