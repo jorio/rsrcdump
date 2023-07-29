@@ -1,10 +1,6 @@
 # rsrcdump: Extract & convert Mac resource forks
 
-Run rsrcdump on an [AppleDouble file](https://en.wikipedia.org/wiki/AppleDouble) and it’ll produce a JSON file with the contents of the [resource fork](https://en.wikipedia.org/wiki/Resource_fork).
-
-You can also use rsrcdump to [create a resource fork from JSON input](#create), enabling you to edit resource forks on a modern setup without fiddling with ResEdit.
-
-Additionally, rsrcdump can convert some resource types to formats usable in modern tools:
+rsrcdump converts Classic Mac OS [resource forks](https://en.wikipedia.org/wiki/Resource_fork) to JSON. It will also convert some common resource types to formats usable in modern tools:
 
 | Resource type                      | Converts to                                               |
 |------------------------------------|-----------------------------------------------------------|
@@ -18,6 +14,7 @@ Additionally, rsrcdump can convert some resource types to formats usable in mode
 | STR#                               | Array of UTF-8 strings (stored in index.json)             |
 | Other resource types               | Hex dump or [structured JSON](#struct)                    |
 
+You can also use rsrcdump to [create a resource fork from JSON input](#create), enabling you to edit resource forks on a modern setup without fiddling with ResEdit.
 
 ## Requirements
 
@@ -47,24 +44,24 @@ Let’s look at extracting a resource fork when your file originates from one of
 - Dual-fork files on modern versions of macOS
 - Zip archives made with macOS, extracted on Windows/Linux (__MACOSX folder)
 - Old archive formats (.bin/.sit/.cpt) extracted by The Unarchiver
-- Files on a host volume shared with BasiliskII or SheepShaver (not AppleDouble)
+- Files on a host volume shared with BasiliskII or SheepShaver
 
 ### <a name="dualfork"/>Dual-fork files on macOS
 
 This section only applies to macOS.
 
-On modern versions of macOS, resource forks still exist. They can be accessed by appending `/..namedfork/rsrc` to a filename. This yields a “naked” resource fork (not encapsulated in an AppleDouble file), so you must tell rsrcdump about it with the `--no-adf` switch.
+On modern versions of macOS, resource forks still exist. They can be accessed by appending `/..namedfork/rsrc` to a filename.
 
 So, **on macOS,** let's try to extract the music from Mighty Mike. Get [`Mighty Mike.zip` from Pangea Software](https://pangeasoft.net/mightymike/files), and unzip it. Then run:
 
 ```bash
-rsrcdump.sh --extract "Mighty Mike™/Data/Music/..namedfork/rsrc" --no-adf
+rsrcdump.sh --extract "Mighty Mike™/Data/Music/..namedfork/rsrc"
 ```
-You’ll find the extracted files in `Music.json` plus a folder named `Music.json_resources` in the current working directory.
+You’ll find the resource table in `Music.json` and the audio files in a folder named `Music.json_resources` in the current working directory.
 
 ### <a name="zip"/>Zip archives made with macOS, extracted on Windows/Linux (__MACOSX folder)
 
-If you have ever come across a zip file made with macOS, you may have noticed that extracting it on Windows or Linux produces a directory named `__MACOSX`. That folder contains resource forks as AppleDouble files. rsrcdump can work with those. (Note that files inside __MACOSX may be hidden for you because they start with a dot.)
+If you have ever come across a zip file made with macOS, you may have noticed that extracting it on Windows or Linux produces a directory named `__MACOSX`. That folder contains resource forks as AppleDouble file; rsrcdump can work with those. (Note that files inside __MACOSX may be hidden for you because they start with a dot.)
 
 For example, if you’re using **Linux,** get [`Mighty Mike.zip` from Pangea Software](https://pangeasoft.net/mightymike/files), and unzip it. You can then run this command to extract the game’s music:
 
@@ -72,11 +69,11 @@ For example, if you’re using **Linux,** get [`Mighty Mike.zip` from Pangea Sof
 rsrcdump.sh --extract "__MACOSX/Mighty Mike™/Data/._Music"
 ```
 
-You’ll find the extracted files in `Music.json` plus a folder named `Music.json_resources` in the current working directory.
+You’ll find the resource table in `Music.json` and the audio files in a folder named `Music.json_resources` in the current working directory.
 
 ### <a name="unar"/>Old archive formats (.bin/.sit/.cpt) extracted by The Unarchiver
 
-If you have an old Mac archive (such as .sit, .cpt, .bin, etc.), you can use [the command-line version of The Unarchiver](https://theunarchiver.com/command-line) and tell it to keep the resource forks. They’ll appear as `.rsrc` files once extracted. The Unarchiver wraps them in an AppleDouble container, which is perfect for use with rsrcdump.
+If you have an old Mac archive (such as .sit, .cpt, .bin, etc.), you can use [the command-line version of The Unarchiver](https://theunarchiver.com/command-line) and tell it to keep the resource forks. They’ll appear as `.rsrc` files once extracted. The Unarchiver wraps them in an AppleDouble container (which rsrcdump will automatically detect).
 
 As an example, get [`bloodsuckers.bin` from Pangea Software](https://pangeasoft.net/files) and extract it like so:
 
@@ -90,18 +87,16 @@ Then you can extract the sound effects with:
 rsrcdump.sh --extract "bloodsuckers/Data/Sounds.rsrc"
 ```
 
-You’ll find the extracted files in `Sounds.json` plus a folder named `Sounds.json_resources` in the current working directory.
+You’ll find the resource table in `Sounds.json` and the audio files in a folder named `Sounds.json_resources` in the current working directory.
 
-### <a name="emulators"/>Files on a host volume shared with BasiliskII or SheepShaver (not AppleDouble)
+### <a name="emulators"/>Files on a host volume shared with BasiliskII or SheepShaver
 
 When you share a host volume with BasiliskII or Sheepshaver, the emulator stores resource forks in a folder named `.rsrc`.
-
-The emulators do **not** encapsulate the resource forks in an AppleDouble container; they’re just “naked” resource forks. So you must tell rsrcdump to bypass AppleDouble detection with the `--no-adf` argument.
 
 For example:
 
 ```bash
-rsrcdump.sh --extract ".rsrc/SomeResourceFile" --no-adf
+rsrcdump.sh --extract ".rsrc/SomeResourceFile"
 ```
 
 ## Advanced usage patterns

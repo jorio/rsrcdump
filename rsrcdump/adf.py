@@ -10,13 +10,20 @@ ADF_VERSION: Final = 0x00020000
 ADF_ENTRYNUM_RESOURCEFORK: Final = 2
 
 
+class NotADFError(ValueError):
+    pass
+
+
 def unpack_adf(adf_data: bytes) -> dict[int, bytes]:
     u = Unpacker(adf_data)
 
     magic, version, filler, num_entries = u.unpack(">LL16sH")
-    
-    assert ADF_MAGIC == magic, "AppleDouble magic number not found"
-    assert ADF_VERSION == version, "Not a Version 2 ADF"
+
+    if ADF_MAGIC != magic:
+        raise NotADFError("AppleDouble magic number not found")
+
+    if ADF_VERSION != version:
+        raise NotImplementedError(f"Only Version 2 ADF is supported (this is version {version:08x})")
 
     entry_offsets = []
 
@@ -53,7 +60,7 @@ def pack_adf(adf_entries: dict[int, bytes]) -> bytes:
         stream.write(pack(">L", entry_num))
         wp_offsets[entry_num] = WritePlaceholder(stream, ">L")
         stream.write(pack(">L", len(entry_data)))
-    
+
     for entry_num, entry_data in adf_entries.items():
         if entry_num == 0:
             continue

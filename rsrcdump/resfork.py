@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from struct import unpack_from, pack
+from struct import unpack_from, pack, calcsize
 from io import BytesIO
 
 from rsrcdump.packutils import Unpacker, WritePlaceholder
@@ -7,6 +7,10 @@ from rsrcdump.textio import sanitize_type_name
 
 
 ResType = bytes
+
+
+class InvalidResourceFork(ValueError):
+    pass
 
 
 @dataclass
@@ -67,7 +71,13 @@ class ResourceFork:
 
         fork = ResourceFork()
 
+        if len(data) < calcsize(">LLLL16x"):
+            raise InvalidResourceFork("data is too small to contain a valid resource fork header")
+
         data_offset, map_offset, data_length, map_length = unpack_from(">LLLL", data, 0)
+
+        if data_offset + data_length > len(data) or map_offset + map_length > len(data):
+            raise InvalidResourceFork("offsets/lengths in header are nonsense")
 
         u_data = Unpacker(data[data_offset: data_offset + data_length])
         u_map = Unpacker(data[map_offset: map_offset + map_length])

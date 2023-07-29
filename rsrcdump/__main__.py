@@ -4,8 +4,8 @@ import os
 import sys
 import argparse
 
-from rsrcdump.resfork import ResourceFork
-from rsrcdump.adf import unpack_adf, ADF_ENTRYNUM_RESOURCEFORK, pack_adf
+from rsrcdump.resfork import InvalidResourceFork, ResourceFork
+from rsrcdump.adf import unpack_adf, ADF_ENTRYNUM_RESOURCEFORK, pack_adf, NotADFError
 from rsrcdump.jsonio import resource_fork_to_json, json_to_resource_fork
 from rsrcdump.textio import parse_type_name
 from rsrcdump.resconverters import standard_converters, StructConverter, Base16Converter
@@ -45,7 +45,7 @@ parser.add_argument(
 
 parser.add_argument(
     '--no-adf', action='store_true',
-    help="Don't interpret input file as AppleDouble.")
+    help="With -c, do not encapsulate resource fork in an AppleDouble container.")
 
 parser.add_argument(
     '-i', '--include-type', action='append', metavar='type',
@@ -103,14 +103,16 @@ for template_arg in struct_specs:
 
 def load_resmap():
     with open(inpath, 'rb') as file:
-        if not args.no_adf:
-            adf_entries = unpack_adf(file.read())
-            adf_resfork = adf_entries[ADF_ENTRYNUM_RESOURCEFORK]
-            fork = ResourceFork.from_bytes(adf_resfork)
-            return fork, adf_entries
-        else:
-            fork = ResourceFork.from_bytes(file.read())
-            return fork, []
+        data = file.read()
+
+    try:
+        adf_entries = unpack_adf(data)
+        adf_resfork = adf_entries[ADF_ENTRYNUM_RESOURCEFORK]
+        fork = ResourceFork.from_bytes(adf_resfork)
+        return fork, adf_entries
+    except NotADFError:
+        fork = ResourceFork.from_bytes(data)
+        return fork, []
 
 
 def do_list():
@@ -204,12 +206,15 @@ def do_pack():
 # Non-zero result causes sys.exit(1)
 result = -1
 
-if args.list:
-    result = do_list()
-elif args.extract:
-    result = do_extract()
-elif args.create:
-    result = do_pack()
+try:
+    if args.list:
+        result = do_list()
+    elif args.extract:
+        result = do_extract()
+    elif args.create:
+        result = do_pack()
+except InvalidResourceFork as exc:
+    print(f"Invalid resource fork: {exc}")
 
 if result:
     sys.exit(1)
