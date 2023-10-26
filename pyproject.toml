@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "rsrcdump"
+version = "0.1.0"
+repository = "https://github.com/jorio/rsrcdump"
+description = "Extract and convert Mac resource forks"
+authors = ["Iliyas Jorio <github@jor.io>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+
+[tool.poetry.scripts]
+rsrcdump = "rsrcdump.__main__:main"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

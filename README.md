@@ -20,7 +20,34 @@ You can also use rsrcdump to [create a resource fork from JSON input](#create), 
 
 Python **3.10** or later.
 
-(Note that macOS currently ships with Python 3.9, which is too old; you can install a more recent version via Homebrew.)
+Note that macOS currently ships with Python 3.9, which is too old; you can install a more recent version via Homebrew:
+
+1. [Install Homebrew](https://brew.sh/)
+2. Run: `brew install python`
+
+## Installing
+
+**First, ensure you're using Python 3.10 or later with:** `python3 --version`
+
+To install or upgrade:
+
+```bash
+pip3 install --upgrade git+https://github.com/jorio/rsrcdump@master
+```
+
+Or you can do so from the cloned repo:
+
+```bash
+git clone https://github.com/jorio/rsrcdump.git
+cd rsrcdump
+pip3 install -e .
+```
+
+To uninstall:
+
+```bash
+pip3 uninstall rsrcdump
+```
 
 ## Table of contents
 
@@ -55,7 +82,7 @@ On modern versions of macOS, resource forks still exist. They can be accessed by
 So, **on macOS,** let's try to extract the music from Mighty Mike. Get [`Mighty Mike.zip` from Pangea Software](https://pangeasoft.net/mightymike/files), and unzip it. Then run:
 
 ```bash
-rsrcdump.sh --extract "Mighty Mike™/Data/Music/..namedfork/rsrc"
+rsrcdump --extract "Mighty Mike™/Data/Music/..namedfork/rsrc"
 ```
 You’ll find the resource table in `Music.json` and the audio files in a folder named `Music.json_resources` in the current working directory.
 
@@ -66,7 +93,7 @@ If you have ever come across a zip file made with macOS, you may have noticed th
 For example, if you’re using **Linux,** get [`Mighty Mike.zip` from Pangea Software](https://pangeasoft.net/mightymike/files), and unzip it. You can then run this command to extract the game’s music:
 
 ```bash
-rsrcdump.sh --extract "__MACOSX/Mighty Mike™/Data/._Music"
+rsrcdump --extract "__MACOSX/Mighty Mike™/Data/._Music"
 ```
 
 You’ll find the resource table in `Music.json` and the audio files in a folder named `Music.json_resources` in the current working directory.
@@ -84,7 +111,7 @@ unar -k visible bloodsuckers.bin
 Then you can extract the sound effects with:
 
 ```bash
-rsrcdump.sh --extract "bloodsuckers/Data/Sounds.rsrc"
+rsrcdump --extract "bloodsuckers/Data/Sounds.rsrc"
 ```
 
 You’ll find the resource table in `Sounds.json` and the audio files in a folder named `Sounds.json_resources` in the current working directory.
@@ -96,7 +123,7 @@ When you share a host volume with BasiliskII or Sheepshaver, the emulator stores
 For example:
 
 ```bash
-rsrcdump.sh --extract ".rsrc/SomeResourceFile"
+rsrcdump --extract ".rsrc/SomeResourceFile"
 ```
 
 ## Advanced usage patterns
@@ -104,7 +131,7 @@ rsrcdump.sh --extract ".rsrc/SomeResourceFile"
 ### List resources without extracting
 
 ```bash
-rsrcdump.sh --list "Bloodsuckers 2.0.1.rsrc"
+rsrcdump --list "Bloodsuckers 2.0.1.rsrc"
 ```
 
 ### Only include specific resource types
@@ -114,7 +141,7 @@ If you’re only interested in a few resource types, pass them with `-i` (or `--
 For example, if you’re interested in `STR ` and `icl8` resources only, you could use this:
 
 ```bash
-rsrcdump.sh --extract "Bloodsuckers 2.0.1.rsrc" -i STR -i icl8
+rsrcdump --extract "Bloodsuckers 2.0.1.rsrc" -i STR -i icl8
 ```
 
 ### Exclude specific resource types
@@ -146,7 +173,7 @@ You can combine several `--struct` switches. You can also put all of your struct
 **Example 1:** Parse a `Hedr` from [Otto Matic](https://github.com/jorio/OttoMatic) terrain files:
 
 ```bash
-rsrcdump.sh --extract \
+rsrcdump --extract \
   --struct "Hedr:L5i3f4i44s:vers,items,width,height,tilePages,tiles,tileSize,minY,maxY,splines,fences,uniqueST,waters" \
   EarthFarm.ter.rsrc
 ```
@@ -175,7 +202,7 @@ The JSON output will look like:
 **Example 2:** Parse a *list* of `FnNb` (fence nub positions) from Otto Matic terrain files:
 
 ```bash
-rsrcdump.sh --extract --struct "FnNb:ii+:x,z" EarthFarm.ter.rsrc
+rsrcdump --extract --struct "FnNb:ii+:x,z" EarthFarm.ter.rsrc
 ```
 
 The JSON output will look like:
@@ -193,7 +220,7 @@ The JSON output will look like:
 **Example 3:** Parse an Otto Matic terrain file with all struct converters defined in [sample-specs.txt](sample-specs.txt):
 
 ```bash
-rsrcdump.sh --extract --struct-file sample-specs.txt EarthFarm.ter.rsrc
+rsrcdump --extract --struct-file sample-specs.txt EarthFarm.ter.rsrc
 ```
 
 ## <a name="create"/>Create resource forks from JSON files
@@ -205,7 +232,7 @@ The JSON input may be structured with the help of [custom struct converters](#st
 **Example:** Say you have extracted one of Otto Matic’s level files, for example “EarthFarm.ter.rsrc”, to “EarthFarm.ter.json” (with `--struct-file sample-specs.txt`). You’ve edited the JSON file by hand and now you want to pack it back to a resource fork so you can play your modded version. Simply run `rsrcdump --create` with the JSON file as input:
 
 ```bash
-rsrcdump.sh --create --struct-file sample-specs.txt EarthFarm.ter.json -o MyModdedEarthFarm.ter.rsrc
+rsrcdump --create --struct-file sample-specs.txt EarthFarm.ter.json -o MyModdedEarthFarm.ter.rsrc
 ```
 
 ## <a name="aiff"/>Note on AIFF-C files
