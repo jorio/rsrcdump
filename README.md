@@ -60,6 +60,7 @@ pip3 uninstall rsrcdump
 - [Dealing with “weird” resource type names](#weird)
 - [Generate structured JSON from arbitrary resource data](#struct)
 - [Create resource forks from JSON files](#create)
+- [Use as a Python library](#pylib)
 - [Note on AIFF-C files](#aiff)
 - [Known limitations](#limitations)
 - [License](#license)
@@ -233,6 +234,22 @@ The JSON input may be structured with the help of [custom struct converters](#st
 
 ```bash
 rsrcdump --create --struct-file sample-specs.txt EarthFarm.ter.json -o MyModdedEarthFarm.ter.rsrc
+```
+
+## <a name="pylib"/>Use as a Python library
+
+Call `rsrcdump.load(...)` which returns a resource fork that you can explore like a normal Python `dict`.
+
+```pycon
+>>> import rsrcdump
+>>> rezfork = rsrcdump.load("Nanosaur/Data/Skeletons/Deinon.skeleton.rsrc")
+>>> rezfork
+ResourceFork(1 Hedr, 20 Bone, 20 BonP, 20 BonN, 1 RelP, 15 AnHd, 15 Evnt, 15 NumK, 300 KeyF, 1 alis)
+>>> rezfork['Bone'][1008].name
+b'Right Leg 1'
+>>> rezfork['Bone'][1008].data
+>>> rezfork['Bone'][1008].data
+b'\x00\x00\x00\x00\x0bRight Leg 1\x01o\x01n\x01m\x01l...'
 ```
 
 ## <a name="aiff"/>Note on AIFF-C files

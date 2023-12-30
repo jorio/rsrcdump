@@ -3,7 +3,7 @@ from struct import unpack_from, pack, calcsize
 from io import BytesIO
 
 from rsrcdump.packutils import Unpacker, WritePlaceholder
-from rsrcdump.textio import get_global_encoding, sanitize_type_name
+from rsrcdump.textio import get_global_encoding, sanitize_type_name, parse_type_name
 
 
 ResType = bytes
@@ -71,6 +71,25 @@ class ResourceFork:
             for res_id in self.tree[res_type]:
                 flat.append(self.tree[res_type][res_id])
         return sorted(flat, key=lambda r: r.order)
+
+    def __repr__(self) -> str:
+        s = ""
+        prefix = "ResourceFork("
+        for res_type in self.tree:
+            n = len(self.tree[res_type])
+            s += f"{prefix}{n} {sanitize_type_name(res_type)}"
+            prefix = ", "
+        s += ")"
+        return s
+
+    def __getitem__(self, key: str | bytes) -> dict[int, Resource]:
+        if type(key) is str:
+            key = parse_type_name(key)
+        if type(key) is not bytes:
+            raise TypeError("restype must convert to a bytes object")
+        if len(key) != 4:
+            raise ValueError("restype isn't 4 bytes")
+        return self.tree[key]
 
     @staticmethod
     def from_bytes(data: bytes) -> 'ResourceFork':

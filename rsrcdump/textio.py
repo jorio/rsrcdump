@@ -13,6 +13,8 @@ def set_global_encoding(encoding: str) -> str:
 
 
 def sanitize_type_name(restype: bytes) -> str:
+    if len(restype) != 4:
+        raise ValueError(f"restype isn't 4 bytes")
     assert len(restype) == 4
     if restype != b'    ':
         restype = restype.rstrip(b' ')
@@ -22,7 +24,8 @@ def sanitize_type_name(restype: bytes) -> str:
 def parse_type_name(sane_name: str) -> bytes:
     restype = unquote_to_bytes(sane_name)
     restype = restype.ljust(4, b' ')
-    assert len(restype) == 4
+    if len(restype) != 4:
+        raise ValueError(f"decoded restype doesn't work out to 4 bytes")
     return restype
 
 
