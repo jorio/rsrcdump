@@ -776,6 +776,23 @@ def convert_pict_to_image(data: bytes) -> tuple[int, int, bytes]:
         elif opcode == Op.EndOfPicture:  # done
             break
 
+        elif opcode == Op.CompressedQuickTime:  # 0x8200 - QuickTime compressed data
+            # Handle QuickTime TIFF decompression instead of skipping
+            length, = u.unpack(">L")
+            qt_data = u.read(length)
+            
+            # Try to extract and decode embedded TIFF
+            try:
+                tiff_32bit = extract_quicktime_tiff(qt_data)
+                if tiff_32bit:
+                    # Replace canvas with decoded TIFF data
+                    canvas_32bit = tiff_32bit
+                    print(f"Successfully decoded QuickTime TIFF ({len(tiff_32bit)//4} pixels)")
+                else:
+                    print(f"!!! skipping QuickTime data (no TIFF found) at offset {u.offset}")
+            except Exception as e:
+                print(f"!!! QuickTime TIFF decompression failed: {e}")
+
         elif 0x00D0 <= opcode <= 0x00FE:  # reserved
             length, = u.unpack(">H")
             u.read(length)
@@ -948,3 +965,65 @@ def convert_sicn_to_image(data: bytes) -> tuple[int, int, bytes]:
         else:
             bgra.write(b'\xFF\xFF\xFF\xFF')
     return 16, num_icons*16, bgra.getvalue()
+
+
+def extract_quicktime_tiff(qt_data: bytes) -> bytes | None:
+    """
+    Extract and decode TIFF data from QuickTime container.
+    
+    QuickTime compressed PICT files (opcode 0x8200) often contain LZW-compressed 
+    TIFF images wrapped in a QuickTime container format. This function:
+    1. Searches for TIFF magic bytes within the QuickTime data
+    2. Extracts the embedded TIFF
+    3. Uses Pillow to decode the TIFF (including LZW compression)
+    4. Returns 32-bit BGRA pixel data
+    
+    Returns None if no TIFF data found or decompression fails.
+    """
+    try:
+        from PIL import Image
+        import io
+    except ImportError:
+        print("!!! Pillow not available for TIFF decompression (install with: pip install Pillow)")
+        return None
+    
+    # Search for TIFF magic bytes within QuickTime container
+    tiff_magic_be = b'\x4D\x4D\x00\x2A'  # MM (big-endian TIFF)
+    tiff_magic_le = b'\x49\x49\x2A\x00'  # II (little-endian TIFF)
+    
+    tiff_start = None
+    for magic in [tiff_magic_be, tiff_magic_le]:
+        offset = qt_data.find(magic)
+        if offset != -1:
+            tiff_start = offset
+            break
+    
+    if tiff_start is None:
+        print("!!! No TIFF magic found in QuickTime data")
+        return None
+    
+    # Extract TIFF data from QuickTime container
+    tiff_data = qt_data[tiff_start:]
+    
+    try:
+        # Use Pillow to decode TIFF (handles LZW compression automatically)
+        with Image.open(io.BytesIO(tiff_data)) as img:
+            # Convert to RGBA for consistency
+            if img.mode != 'RGBA':
+                img = img.convert('RGBA')
+            
+            # Convert to bytes in BGRA format (rsrcdump's standard)
+            pixels = img.tobytes()
+            
+            # Convert RGBA to BGRA
+            bgra_data = io.BytesIO()
+            for i in range(0, len(pixels), 4):
+                r, g, b, a = pixels[i:i+4]
+                bgra_data.write(bytes([b, g, r, a]))
+            
+            print(f"Decoded TIFF: {img.width}x{img.height}, mode={img.format}")
+            return bgra_data.getvalue()
+            
+    except Exception as e:
+        print(f"!!! TIFF decoding failed: {e}")
+        return None
