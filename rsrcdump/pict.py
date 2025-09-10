@@ -776,6 +776,29 @@ def convert_pict_to_image(data: bytes) -> tuple[int, int, bytes]:
         elif opcode == Op.EndOfPicture:  # done
             break
 
+        elif opcode == Op.CompressedQuickTime:  # 0x8200 - QuickTime compressed data
+            # Handle QuickTime TIFF decompression instead of skipping
+            length, = u.unpack(">L")
+            qt_data = u.read(length)
+            
+            # Try to extract and decode embedded image data
+            try:
+                # Try TIFF decompression first
+                decoded_32bit = extract_quicktime_tiff(qt_data)
+                
+                # If no TIFF found, try JPEG extraction
+                if not decoded_32bit:
+                    decoded_32bit = extract_quicktime_jpeg(qt_data)
+                
+                if decoded_32bit:
+                    # Replace canvas with decoded image data
+                    canvas_32bit = decoded_32bit
+                    print(f"Successfully decoded QuickTime image ({len(decoded_32bit)//4} pixels)")
+                else:
+                    print(f"!!! skipping QuickTime data (no supported format found) at offset {u.offset}")
+            except Exception as e:
+                print(f"!!! QuickTime decompression failed: {e}")
+
         elif 0x00D0 <= opcode <= 0x00FE:  # reserved
             length, = u.unpack(">H")
             u.read(length)
@@ -948,3 +971,126 @@ def convert_sicn_to_image(data: bytes) -> tuple[int, int, bytes]:
         else:
             bgra.write(b'\xFF\xFF\xFF\xFF')
     return 16, num_icons*16, bgra.getvalue()
+
+
+def extract_quicktime_tiff(qt_data: bytes) -> bytes | None:
+    """
+    Extract and decode TIFF data from QuickTime container.
+    
+    QuickTime compressed PICT files (opcode 0x8200) often contain LZW-compressed 
+    TIFF images wrapped in a QuickTime container format. This function:
+    1. Searches for TIFF magic bytes within the QuickTime data
+    2. Extracts the embedded TIFF
+    3. Uses Pillow to decode the TIFF (including LZW compression)
+    4. Returns 32-bit BGRA pixel data
+    
+    Returns None if no TIFF data found or decompression fails.
+    """
+    try:
+        from PIL import Image
+        import io
+    except ImportError:
+        print("!!! Pillow not available for TIFF decompression (install with: pip install Pillow)")
+        return None
+    
+    # Search for TIFF magic bytes within QuickTime container
+    tiff_magic_be = b'\x4D\x4D\x00\x2A'  # MM (big-endian TIFF)
+    tiff_magic_le = b'\x49\x49\x2A\x00'  # II (little-endian TIFF)
+    
+    tiff_start = None
+    for magic in [tiff_magic_be, tiff_magic_le]:
+        offset = qt_data.find(magic)
+        if offset != -1:
+            tiff_start = offset
+            break
+    
+    if tiff_start is None:
+        print("!!! No TIFF magic found in QuickTime data")
+        return None
+    
+    # Extract TIFF data from QuickTime container
+    tiff_data = qt_data[tiff_start:]
+    
+    try:
+        # Use Pillow to decode TIFF (handles LZW compression automatically)
+        with Image.open(io.BytesIO(tiff_data)) as img:
+            # Convert to RGBA for consistency
+            if img.mode != 'RGBA':
+                img = img.convert('RGBA')
+            
+            # Convert to bytes in BGRA format (rsrcdump's standard)
+            pixels = img.tobytes()
+            
+            # Convert RGBA to BGRA
+            bgra_data = io.BytesIO()
+            for i in range(0, len(pixels), 4):
+                r, g, b, a = pixels[i:i+4]
+                bgra_data.write(bytes([b, g, r, a]))
+            
+            print(f"Decoded TIFF: {img.width}x{img.height}, mode={img.format}")
+            return bgra_data.getvalue()
+            
+    except Exception as e:
+        print(f"!!! TIFF decoding failed: {e}")
+        return None
+
+
+def extract_quicktime_jpeg(qt_data: bytes) -> bytes | None:
+    """
+    Extract and decode JPEG data from QuickTime container.
+    
+    QuickTime compressed PICT files (opcode 0x8200) may contain JPEG 
+    images wrapped in a QuickTime container. This function:
+    1. Searches for JPEG magic bytes within the QuickTime data
+    2. Extracts the embedded JPEG
+    3. Uses Pillow to decode the JPEG (24-bit RGB support)
+    4. Returns 32-bit BGRA pixel data
+    
+    Returns None if no JPEG data found or decompression fails.
+    """
+    try:
+        from PIL import Image
+        import io
+    except ImportError:
+        return None
+    
+    # Search for JPEG magic bytes within QuickTime container
+    jpeg_magic = b'\xff\xd8\xff'  # JPEG file header (SOI + marker)
+    
+    jpeg_start = qt_data.find(jpeg_magic)
+    if jpeg_start == -1:
+        return None
+    
+    # Extract JPEG data from QuickTime container
+    # JPEG ends with EOI marker (0xFFD9)
+    jpeg_end_marker = b'\xff\xd9'
+    jpeg_end = qt_data.find(jpeg_end_marker, jpeg_start)
+    
+    if jpeg_end != -1:
+        jpeg_data = qt_data[jpeg_start:jpeg_end + 2]  # Include EOI marker
+    else:
+        # If no EOI found, use all remaining data
+        jpeg_data = qt_data[jpeg_start:]
+    
+    try:
+        # Use Pillow to decode JPEG (handles 24-bit RGB automatically)
+        with Image.open(io.BytesIO(jpeg_data)) as img:
+            # Convert to RGBA for consistency (adds alpha channel if needed)
+            if img.mode != 'RGBA':
+                img = img.convert('RGBA')
+            
+            # Convert to bytes in BGRA format (rsrcdump's standard)
+            pixels = img.tobytes()
+            
+            # Convert RGBA to BGRA
+            bgra_data = io.BytesIO()
+            for i in range(0, len(pixels), 4):
+                r, g, b, a = pixels[i:i+4]
+                bgra_data.write(bytes([b, g, r, a]))
+            
+            print(f"Decoded JPEG: {img.width}x{img.height}, mode={img.mode}")
+            return bgra_data.getvalue()
+            
+    except Exception as e:
+        print(f"!!! JPEG decoding failed: {e}")
+        return None
