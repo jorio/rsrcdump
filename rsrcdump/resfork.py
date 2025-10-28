@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from struct import unpack_from, pack, calcsize
 from io import BytesIO
+from typing import cast
 
 from rsrcdump.packutils import Unpacker, WritePlaceholder
 from rsrcdump.textio import get_global_encoding, sanitize_type_name, parse_type_name
@@ -10,7 +11,7 @@ ResType = bytes
 
 
 class InvalidResourceFork(ValueError):
-    pass
+    __slots__ = ()
 
 
 @dataclass
@@ -43,11 +44,11 @@ class Resource:
         return f"{sanitize_type_name(self.type)}#{self.num}"
 
     @property
-    def type_str(self, errors='replace') -> str:
+    def type_str(self, errors: str='replace') -> str:
         return self.type.decode(get_global_encoding(), errors)
 
     @property
-    def name_str(self, errors='replace') -> str:
+    def name_str(self, errors: str='replace') -> str:
         return self.name.decode(get_global_encoding(), errors)
 
 
@@ -65,7 +66,7 @@ class ResourceFork:
     file_attributes: int = 0
     "Finder file attributes."
 
-    def ordered_flat_list(self):
+    def ordered_flat_list(self) -> list[Resource]:
         flat = []
         for res_type in self.tree:
             for res_id in self.tree[res_type]:
@@ -117,13 +118,13 @@ class ResourceFork:
         u_types = Unpacker(u_map.data[typelist_offset_in_map:])
         u_names = Unpacker(u_map.data[namelist_offset_in_map:])
 
-        order = []
+        order: list[tuple[ResType, int, int]] = []
 
         for i in range(num_types):
-            res_type, res_count, reslist_offset = u_map.unpack(">4sHH")
+            res_type, res_count, reslist_offset = cast(tuple[ResType, int, int], u_map.unpack(">4sHH"))
             res_count += 1
 
-            assert res_type not in fork.tree, F"{res_type} already seen"
+            assert res_type not in fork.tree, F"{res_type!r} already seen"
             fork.tree[res_type] = {}
 
             u_types.seek(reslist_offset)
@@ -217,6 +218,7 @@ class ResourceFork:
         for res_type in self.tree:
             wp_res_list_offsets[res_type].commit(stream.tell() - res_list_offset)
             for res_id in self.tree[res_type]:
+                assert isinstance(res_id, int)
                 res = self.tree[res_type][res_id]
 
                 # Write resource ID

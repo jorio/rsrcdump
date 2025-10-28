@@ -10,7 +10,7 @@ from rsrcdump.jsonio import resource_fork_to_json, json_to_resource_fork
 from rsrcdump.textio import set_global_encoding, parse_type_name
 from rsrcdump.resconverters import standard_converters, StructConverter, Base16Converter
 
-def main():
+def main() -> None:
     description = (
         "Extract resources from a Macintosh resource fork. "
         "https://github.com/jorio/rsrcdump"
@@ -99,24 +99,26 @@ def main():
     for template_arg in struct_specs:
         converter, restype = StructConverter.from_template_string_with_typename(template_arg)
         if converter:
+            assert restype is not None
             converters[restype] = converter
 
 
-    def load_resmap():
+    def load_resmap() -> tuple[ResourceFork, dict[int, bytes]]:
         with open(inpath, 'rb') as file:
             data = file.read()
 
         try:
             adf_entries = unpack_adf(data)
             adf_resfork = adf_entries[ADF_ENTRYNUM_RESOURCEFORK]
+            assert isinstance(adf_resfork, bytes)
             fork = ResourceFork.from_bytes(adf_resfork)
             return fork, adf_entries
         except NotADFError:
             fork = ResourceFork.from_bytes(data)
-            return fork, []
+            return fork, {}
 
 
-    def do_list():
+    def do_list() -> int:
         fork, adf_entries = load_resmap()
         print(F"{'Type':4} {'ID':6} {'Size':8}  {'Name'}")
         print(F"{'-'*4} {'-'*6} {'-'*8}  {'-'*32}")
@@ -128,7 +130,7 @@ def main():
         return 0
 
 
-    def do_extract():
+    def do_extract() -> int:
         outpath = args.o
 
         # Generate an output path if we're not given one
@@ -142,12 +144,13 @@ def main():
 
         fork, adf_entries = load_resmap()
 
-        metadata = {}
+        metadata: dict[str, dict[int, str]] = {}
 
         if adf_entries:
             metadata["adf"] = {}
             del adf_entries[ADF_ENTRYNUM_RESOURCEFORK]
             for adf_entry_num, adf_entry in adf_entries.items():
+                assert isinstance(adf_entry, bytes)
                 metadata["adf"][adf_entry_num] = base64.b16encode(adf_entry).decode("ascii")
 
         return resource_fork_to_json(
@@ -159,7 +162,7 @@ def main():
             metadata=metadata)
 
 
-    def do_pack():
+    def do_pack() -> int:
         outpath = args.o
 
         # Generate an output path if we're not given one
@@ -180,7 +183,8 @@ def main():
             converters=converters,
             only_types=only_types,
             skip_types=skip_types,
-            encoding=args.encoding)
+            #encoding=args.encoding
+        )
 
         binary_fork = fork.pack()
 

@@ -3,6 +3,7 @@ from typing import Any
 import base64
 import os
 import json
+from collections.abc import Mapping
 
 from rsrcdump.resconverters import ResourceConverter, Base16Converter
 from rsrcdump.textio import get_global_encoding, sanitize_type_name, sanitize_resource_name, parse_type_name
@@ -10,11 +11,13 @@ from rsrcdump.resfork import Resource, ResourceFork
 
 
 class JSONEncoderBase16Fallback(json.JSONEncoder):
-    def default(self, o: Any):
+    __slots__ = ()
+
+    def default(self, o: bool | bytes) -> object:
         if isinstance(o, bytes):
             return base64.b16encode(o).decode('ascii')
         else:
-            return JSONEncoderBase16Fallback(self, o)
+            return super().default(o)
 
 
 def resource_fork_to_json(
@@ -23,11 +26,11 @@ def resource_fork_to_json(
         include_types: list[bytes] = [],
         exclude_types: list[bytes] = [],
         converters: dict[bytes, ResourceConverter] = {},
-        metadata: Any = None,
+        metadata: Any | None = None,
         quiet: bool = False,
 ) -> int:
 
-    json_blob: dict = {'_metadata': {
+    json_blob: dict[str, Any] = {'_metadata': {
         'junk1': fork.junk_nextresmap,
         'junk2': fork.junk_filerefnum,
         'file_attributes': fork.file_attributes
@@ -75,7 +78,7 @@ def resource_fork_to_json(
                 obj = converter.unpack(res, fork)
                 separate_file = bool(converter.separate_file)
             except BaseException as convert_exception:
-                errors.append(f"Failed to convert {res_type_key} #{res_id}: {convert_exception}")
+                errors.append(f"Failed to convert {res_type_key} #{res_id!r}: {convert_exception}")
                 if not quiet:
                     print("!!!", errors[-1])
                 wrapper['conversion_error'] = str(convert_exception)
@@ -118,7 +121,7 @@ def resource_fork_to_json(
 
 
 def json_to_resource_fork(
-        json_blob: dict,
+        json_blob: dict[str, Any],
         converters: dict[bytes, ResourceConverter],
         only_types: list[bytes] = [],
         skip_types: list[bytes] = [],
@@ -169,4 +172,3 @@ def json_to_resource_fork(
             fork.tree[res_type][res_num] = res
 
     return fork
-

@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 import base64
-from typing import Any, Callable
+from typing import Any, Callable, TYPE_CHECKING
 
 from rsrcdump.icons import convert_4bit_icon_to_bgra, convert_8bit_icon_to_bgra, convert_1bit_icon_to_bgra
 from rsrcdump.packutils import Unpacker
@@ -10,41 +12,50 @@ from rsrcdump.sndtoaiff import convert_snd_to_aiff
 from rsrcdump.structtemplate import StructTemplate
 from rsrcdump.textio import get_global_encoding, parse_type_name
 
+if TYPE_CHECKING:
+    from typing_extensions import Self
+
 
 class ResourceConverter:
     """ Base class for all resource converters. """
 
+    __slots__ = ("separate_file", "json_key")
+
     separate_file: str
 
-    def __init__(self, separate_file: str = ""):
+    def __init__(self, separate_file: str = "") -> None:
         self.separate_file = separate_file
         self.json_key = "obj"
 
     def unpack(self, res: Resource, fork: ResourceFork) -> Any:
         return res.data
 
-    def pack(self, obj: Any):
+    def pack(self, obj: Any) -> bytes:
         raise NotImplementedError("JSON->Binary packing not implemented in " + self.__class__.__name__)
 
-    
+
 class Base16Converter(ResourceConverter):
     """ Converts arbitrary data to base-16. """
 
-    def __init__(self):
+    __slots__ = ()
+
+    def __init__(self) -> None:
         super().__init__()
         self.json_key = "data"
-    
-    def unpack(self, res: Resource, fork: ResourceFork) -> Any:
+
+    def unpack(self, res: Resource, fork: ResourceFork) -> str:
         return base64.b16encode(res.data).decode('ascii')
 
-    def pack(self, obj: Any) -> bytes:
+    def pack(self, obj: str) -> bytes:
         assert isinstance(obj, str)
         return base64.b16decode(obj)
 
 
 class StructConverter(ResourceConverter):
-    @staticmethod
-    def from_template_string_with_typename(template_arg: str):
+    __slots__ = ("template",)
+
+    @classmethod
+    def from_template_string_with_typename(cls, template_arg: str) -> tuple[Self | None, bytes | None]:
         template_arg = template_arg.strip()
         if not template_arg or template_arg.startswith("//"):  # skip blank lines
             return None, None
@@ -55,9 +66,9 @@ class StructConverter(ResourceConverter):
         restype = parse_type_name(split[0])
         formatstr = split[1]
         template = StructTemplate.from_template_string(formatstr)
-        return StructConverter(template), restype
+        return cls(template), restype
 
-    def __init__(self, template: StructTemplate):
+    def __init__(self, template: StructTemplate) -> None:
         super().__init__()
         self.template = template
 
@@ -93,6 +104,8 @@ class StructConverter(ResourceConverter):
 class SingleStringConverter(ResourceConverter):
     """ Converts STR to a string. """
 
+    __slots__ = ()
+
     def unpack(self, res: Resource, fork: ResourceFork) -> str:
         u = Unpacker(res.data)
         result = u.unpack_pstr(get_global_encoding(), 'replace')
@@ -101,6 +114,8 @@ class SingleStringConverter(ResourceConverter):
 
 class StringListConverter(ResourceConverter):
     """ Converts STR# to a list of strings. """
+
+    __slots__ = ()
 
     def unpack(self, res: Resource, fork: ResourceFork) -> list[str]:
         u = Unpacker(res.data)
@@ -115,12 +130,16 @@ class StringListConverter(ResourceConverter):
 class TextConverter(ResourceConverter):
     """ Converts TEXT to a string. """
 
+    __slots__ = ()
+
     def unpack(self, res: Resource, fork: ResourceFork) -> str:
         return res.data.decode(get_global_encoding(), 'replace')
 
 
 class SoundToAiffConverter(ResourceConverter):
     """ Converts snd to an AIFF-C file. """
+
+    __slots__ = ()
 
     def __init__(self) -> None:
         super().__init__(separate_file='.aiff')
@@ -131,6 +150,8 @@ class SoundToAiffConverter(ResourceConverter):
 
 class PictConverter(ResourceConverter):
     """ Converts a raster PICT to a PNG file. """
+
+    __slots__ = ()
 
     def __init__(self) -> None:
         super().__init__(separate_file='.png')
@@ -143,6 +164,8 @@ class PictConverter(ResourceConverter):
 class CicnConverter(ResourceConverter):
     """ Converts cicn (arbitrary-sized color icon with embedded palette) to a PNG file. """
 
+    __slots__ = ()
+
     def __init__(self) -> None:
         super().__init__(separate_file='.png')
 
@@ -154,6 +177,8 @@ class CicnConverter(ResourceConverter):
 class PpatConverter(ResourceConverter):
     """ Converts ppat to a PNG file. """
 
+    __slots__ = ()
+
     def __init__(self) -> None:
         super().__init__(separate_file='.png')
 
@@ -164,6 +189,9 @@ class PpatConverter(ResourceConverter):
 
 class SicnConverter(ResourceConverter):
     """ Converts sicn to a PNG file. """
+
+    __slots__ = ()
+
     def __init__(self) -> None:
         super().__init__(separate_file='.png')
 
@@ -175,7 +203,9 @@ class SicnConverter(ResourceConverter):
 class TemplateConverter(ResourceConverter):
     """ Parses TMPL resources. """
 
-    def unpack(self, res: Resource, fork: ResourceFork) -> list[dict[str, str | bytes]]:
+    __slots__ = ()
+
+    def unpack(self, res: Resource, fork: ResourceFork) -> list[dict[str, str]]:
         u = Unpacker(res.data)
         fields = []
         while not u.eof():
@@ -188,7 +218,9 @@ class TemplateConverter(ResourceConverter):
 class FileDumper(ResourceConverter):
     preprocess: Callable[[bytes], bytes] | None
 
-    def __init__(self, extension: str, preprocess: Callable[[bytes], bytes]=None) -> None:
+    __slots__ = ("preprocess",)
+
+    def __init__(self, extension: str, preprocess: Callable[[bytes], bytes] | None = None) -> None:
         super().__init__(extension)
         self.preprocess = preprocess
 
@@ -207,9 +239,11 @@ class IconConverter(ResourceConverter):
     (icl8, ics8, icl4, ics4, ICN#, ics#).
     """
 
+    __slots__ = ()
+
     def __init__(self) -> None:
         super().__init__(separate_file='.png')
-    
+
     def unpack(self, res: Resource, fork: ResourceFork) -> bytes:
         if res.type in [b'icl8', b'icl4', b'ICN#']:
             width, height = 32, 32

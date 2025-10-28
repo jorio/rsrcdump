@@ -1,3 +1,7 @@
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
 [tool.poetry]
 name = "rsrcdump"
 version = "0.1.0"
@@ -6,6 +10,9 @@ description = "Extract and convert Mac resource forks"
 authors = ["Iliyas Jorio <github@jor.io>"]
 license = "MIT"
 readme = "README.md"
+classifiers = [
+    "Typing :: Typed",
+]
 
 [tool.poetry.dependencies]
 python = "^3.10"
@@ -13,7 +20,15 @@ python = "^3.10"
 [tool.poetry.scripts]
 rsrcdump = "rsrcdump.__main__:main"
 
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+[tool.mypy]
+files = ["rsrcdump/",]
+show_column_numbers = true
+show_error_codes = true
+show_traceback = true
+disallow_any_decorated = true
+disallow_any_unimported = true
+ignore_missing_imports = true
+local_partial_types = true
+no_implicit_optional = true
+strict = true
+warn_unreachable = true

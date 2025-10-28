@@ -1,4 +1,4 @@
-from typing import Optional, Final
+from typing import Optional, Final, cast
 from types import TracebackType
 
 import math
@@ -47,6 +47,8 @@ codec_info = {
 }
 
 class IFFChunkWriter:
+    __slots__ = ("stream", "length_placeholder", "start_of_chunk")
+
     def __init__(self, stream: io.BytesIO, chunk_type: bytes) -> None:
         assert type(chunk_type) is bytes
         assert len(chunk_type) == 4
@@ -142,12 +144,16 @@ def convert_snd_to_aiff(data: bytes, name: str) -> bytes:
     zero, union_int, sample_rate_fixed, loop_start, loop_end, encoding, base_note = u.unpack(">iiLLLBb")
     assert 0 == zero
 
+    compression_type: bytes
+    num_packets: int
+    num_channels: int
+
     if encoding == kSampledSoundEncoding_stdSH:
         compression_type = b'raw '
         num_channels = 1
         num_packets = union_int
     elif encoding == kSampledSoundEncoding_cmpSH:
-        num_packets, compression_type = u.unpack(">i14x4s20x")
+        num_packets, compression_type = cast(tuple[int, bytes], u.unpack(">i14x4s20x"))
         num_channels = union_int
         if compression_type == b'\0\0\0\0':
             compression_type = default_compression_type

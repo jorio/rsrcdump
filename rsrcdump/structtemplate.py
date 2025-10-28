@@ -1,6 +1,16 @@
+from __future__ import annotations
+
 import base64
 import struct
-from typing import Any, Generator
+from typing import Any, TYPE_CHECKING, TypeVar
+from collections.abc import Generator
+
+if TYPE_CHECKING:
+    from typing_extensions import Self, TypeAlias
+
+T = TypeVar("T")
+JSONScalar: TypeAlias = str | bytes | int | float | bool
+JSONPackable: TypeAlias = list[JSONScalar] | dict[str, JSONScalar] | JSONScalar
 
 
 class StructTemplate:
@@ -10,8 +20,8 @@ class StructTemplate:
     field_names: list[str]
     is_list: bool
 
-    @staticmethod
-    def from_template_string(template):
+    @classmethod
+    def from_template_string(cls, template: str) -> Self:
         split = template.split(":", 2)
 
         formatstr = split.pop(0)
@@ -22,7 +32,7 @@ class StructTemplate:
             fieldnames = []
 
         assert formatstr
-        return StructTemplate(formatstr, fieldnames)
+        return cls(formatstr, fieldnames)
 
     @staticmethod
     def split_struct_format_fields(fmt: str) -> Generator[str, None, None]:
@@ -53,7 +63,7 @@ class StructTemplate:
             else:
                 raise ValueError(f"Unsupported struct format character '{c}'")
 
-    def __init__(self, fmt: str, user_field_names: list[str]):
+    def __init__(self, fmt: str, user_field_names: list[str]) -> None:
         if not fmt.startswith(("!", ">", "<", "@", "=")):
             # struct.unpack needs to know what endianness to work in; default to big-endian
             fmt = ">" + fmt
@@ -90,7 +100,7 @@ class StructTemplate:
         values = struct.unpack_from(self.format, data, offset)
         return self.tag_values(values)
 
-    def tag_values(self, values: tuple):
+    def tag_values(self, values: tuple[T, ...]) -> dict[str, T] | T | tuple[T, ...]:
         if self.field_names:
             # We have some field names: return name-tagged values in a dict
             assert len(self.field_names) == len(values)
@@ -108,7 +118,7 @@ class StructTemplate:
             # Multiple-element structure but no field names: return the tuple
             return values
 
-    def pack(self, obj: Any) -> bytes:
+    def pack(self, obj: JSONPackable) -> bytes:
         if not self.is_list:
             return self.pack_record(obj)
         else:
@@ -118,9 +128,10 @@ class StructTemplate:
                 buf += self.pack_record(item)
             return buf
 
-    def pack_record(self, json_obj: Any) -> bytes:
-        def process_json_field(_field_format, _field_value):
+    def pack_record(self, json_obj: JSONPackable) -> bytes:
+        def process_json_field(_field_format: str, _field_value: JSONScalar) -> JSONScalar:
             if _field_format.endswith("s"):
+                assert isinstance(_field_value, (str, bytes))
                 return base64.b16decode(_field_value)
             else:
                 return _field_value

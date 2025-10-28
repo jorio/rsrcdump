@@ -4,20 +4,22 @@ from io import BytesIO
 import struct
 
 class Unpacker:
+    __slots__ = ("data", "offset")
+
     def __init__(self, data: bytes, offset: int=0) -> None:
         self.data = data
         self.offset = offset
 
-    def unpack(self, fmt: str) -> tuple:
+    def unpack(self, fmt: str) -> tuple[Any, ...]:
         record_length = struct.calcsize(fmt)
         fields = struct.unpack_from(fmt, self.data, self.offset)
         self.offset += record_length
         return fields
 
-    def seek(self, offset: int):
+    def seek(self, offset: int) -> None:
         self.offset = offset
 
-    def skip(self, n: int):
+    def skip(self, n: int) -> None:
         self.offset += n
 
     def read(self, size: int) -> bytes:
@@ -41,7 +43,10 @@ class Unpacker:
     def remaining(self) -> int:
         return len(self.data) - self.offset
 
+
 class WritePlaceholder:
+    __slots__ = ("stream", "fmt", "position", "committed")
+
     def __init__(self, stream: BytesIO, fmt: str) -> None:
         self.stream = stream
         self.fmt = fmt

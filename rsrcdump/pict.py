@@ -5,14 +5,18 @@ import io
 import struct
 from ctypes import ArgumentError
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from rsrcdump.packutils import Unpacker
 from rsrcdump.structtemplate import StructTemplate
 from rsrcdump.textio import get_global_encoding
 
+if TYPE_CHECKING:
+    from typing_extensions import Self
+
 
 class PICTError(BaseException):
-    pass
+    __slots__ = ()
 
 
 @dataclass(frozen=True)
@@ -23,26 +27,26 @@ class PICTRect:
     right: int
 
     @property
-    def width(self):
+    def width(self) -> int:
         return self.right - self.left
 
     @property
-    def height(self):
+    def height(self) -> int:
         return self.bottom - self.top
 
     def offset(self, dy: int = 0, dx: int = 0) -> PICTRect:
         return PICTRect(self.top + dy, self.left + dx, self.bottom + dy, self.right + dx)
 
-    def intersect(self, r: PICTRect):
-        t = max(self.top, r.top)
-        l = max(self.left, r.left)
-        b = min(self.bottom, r.bottom)
-        r = min(self.right, r.right)
+    def intersect(self, rect: PICTRect) -> Self:
+        t = max(self.top, rect.top)
+        l = max(self.left, rect.left)
+        b = min(self.bottom, rect.bottom)
+        r = min(self.right, rect.right)
 
         b = max(t, b)
         r = max(l, r)
 
-        return PICTRect(t, l, b, r)
+        return self.__class__(t, l, b, r)
 
     def __repr__(self) -> str:
         return f"({self.left},{self.top} {self.width}x{self.height})"
@@ -330,7 +334,7 @@ class Bitmap(Xmap):
     frame_r: int
 
     @property
-    def pixelsize(self) -> int:
+    def pixelsize(self) -> int:  # type: ignore[override]
         return 1
 
 
@@ -586,6 +590,7 @@ def read_pict_bits(u: Unpacker, opcode: int) -> tuple[PICTRect, bytes]:
         if maskrgn_bits:
             mask_8bit = unpack_maskrgn(maskrgn_rect, maskrgn_bits)
 
+    assert palette is not None
     bgra = read_pixmap_image_data(u, raster, palette)
 
     # Apply mask
@@ -642,7 +647,7 @@ def get_reserved_opcode_size(k: int) -> int:
     return -1
 
 
-def crop_32bit(src_data: bytes, src_rect: PICTRect, dst_rect: PICTRect):
+def crop_32bit(src_data: bytes, src_rect: PICTRect, dst_rect: PICTRect) -> bytes:
     intersection = src_rect.intersect(dst_rect)
 
     src_io = io.BytesIO(src_data)
@@ -661,7 +666,7 @@ def crop_32bit(src_data: bytes, src_rect: PICTRect, dst_rect: PICTRect):
     return dst_io.getvalue()
 
 
-def blit_32bit(src_rect: PICTRect, src_data: bytes, dst_rect: PICTRect, dst_data: bytes):
+def blit_32bit(src_rect: PICTRect, src_data: bytes, dst_rect: PICTRect, dst_data: bytes) -> bytes:
     intersection = src_rect.intersect(dst_rect)
 
     src_dy, src_dx = intersection.top - src_rect.top, intersection.left - src_rect.left
@@ -685,7 +690,7 @@ def blit_32bit(src_rect: PICTRect, src_data: bytes, dst_rect: PICTRect, dst_data
     return dst_io.getvalue()
 
 
-def apply_8bit_mask_on_32bit_image(msk_rect: PICTRect, msk_data: bytes, dst_rect: PICTRect, dst_data: bytes):
+def apply_8bit_mask_on_32bit_image(msk_rect: PICTRect, msk_data: bytes, dst_rect: PICTRect, dst_data: bytes) -> bytes:
     intersection = dst_rect.intersect(msk_rect)
 
     msk_dy, msk_dx = intersection.top - msk_rect.top, intersection.left - msk_rect.left
@@ -808,9 +813,10 @@ def convert_pict_to_image(data: bytes) -> tuple[int, int, bytes]:
             if opcode not in (Op.LongComment, Op.LongText, Op.ShortComment, Op.DefHilite):
                 print(F"!!! skipping PICT opcode {opcode_name} at offset {u.offset}")
 
-            template = opcode_templates[opcode]
+            template = opcode_templates[Op(opcode)]
             values = u.unpack(template.format)
             annotated = template.tag_values(values)
+            assert isinstance(annotated, dict)
 
             # Skip rest of variable-length records
             if "len" in annotated:
@@ -818,9 +824,10 @@ def convert_pict_to_image(data: bytes) -> tuple[int, int, bytes]:
                 #     text = u.read(annotated["len"]).decode(get_global_encoding(), "replace")
                 #     print(F"{opcode_name} text contents: {text}")
                 #     continue
-                u.skip(annotated["len"])
+                u.skip(int(annotated["len"]))
             elif "datalen" in annotated:
-                u.skip(annotated["datalen"] - template.record_length)
+                datalen = int(annotated["datalen"])
+                u.skip(datalen - template.record_length)
 
         else:
             raise PICTError(F"unsupported PICT opcode {opcode_name}")
