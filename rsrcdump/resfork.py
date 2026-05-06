@@ -72,6 +72,16 @@ class ResourceFork:
                 flat.append(self.tree[res_type][res_id])
         return sorted(flat, key=lambda r: r.order)
 
+    def lint_resource_key(self, key: str | bytes):
+        if type(key) is str:
+            return parse_type_name(key)
+        if type(key) is not bytes:
+            raise TypeError("restype must convert to a bytes object")
+        if len(key) != 4:
+            raise ValueError("restype isn't 4 bytes")
+
+        return key
+
     def __repr__(self) -> str:
         s = ""
         prefix = "ResourceFork("
@@ -82,13 +92,12 @@ class ResourceFork:
         s += ")"
         return s
 
+    def __contains__(self, key: str | bytes):
+        key = self.lint_resource_key(key)
+        return key in self.tree
+
     def __getitem__(self, key: str | bytes) -> dict[int, Resource]:
-        if type(key) is str:
-            key = parse_type_name(key)
-        if type(key) is not bytes:
-            raise TypeError("restype must convert to a bytes object")
-        if len(key) != 4:
-            raise ValueError("restype isn't 4 bytes")
+        key = self.lint_resource_key(key)
         return self.tree[key]
 
     @staticmethod
