@@ -15,6 +15,12 @@ class PICTError(BaseException):
     pass
 
 
+# Upper bound on a PICT canvas area (in pixels) before we refuse to allocate.
+# ~64 megapixels (a 256 MB RGBA canvas) is far beyond any legitimate classic
+# QuickDraw picture but still stops a malformed rect from exhausting memory.
+MAX_CANVAS_PIXELS = 64 * 1024 * 1024
+
+
 @dataclass(frozen=True)
 class PICTRect:
     top: int
@@ -718,6 +724,15 @@ def convert_pict_to_image(data: bytes) -> tuple[int, int, bytes]:
 
     # Get canvas dimensions
     canvas_rect = PICTRect(*u.unpack(">4h"))
+
+    # Sanity-check the canvas size before allocating. The rect comes straight
+    # from the file as four signed 16-bit ints, so a malformed PICT can declare
+    # a ~65535x65535 canvas and force a multi-gigabyte allocation from just a
+    # few input bytes. Reject implausible dimensions instead.
+    if canvas_rect.width < 0 or canvas_rect.height < 0:
+        raise PICTError(f"PICT canvas has negative dimensions: {canvas_rect}")
+    if canvas_rect.width * canvas_rect.height > MAX_CANVAS_PIXELS:
+        raise PICTError(f"PICT canvas is implausibly large: {canvas_rect}")
 
     # Initialize canvas pixels
     canvas_32bit = b"\xFF\xFF\xFF\xFF" * (canvas_rect.width * canvas_rect.height)
