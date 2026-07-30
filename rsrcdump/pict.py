@@ -467,10 +467,10 @@ def unpack4(u: Unpacker, w: int, h: int, rowbytes: int, numplanes: int) -> bytes
     else:
         for y in range(h):
             for x in range(w):
-                a = unpacked[y*w*3 + x + w*0]
-                r = unpacked[y*w*3 + x + w*1]
-                g = unpacked[y*w*3 + x + w*2]
-                b = unpacked[y*w*3 + x + w*3]
+                a = unpacked[y*w*4 + x + w*0]
+                r = unpacked[y*w*4 + x + w*1]
+                g = unpacked[y*w*4 + x + w*2]
+                b = unpacked[y*w*4 + x + w*3]
                 dst.write(struct.pack(">BBBB", b,g,r,a))
     return dst.getvalue()
 
@@ -903,7 +903,7 @@ def convert_cicn_to_image(data: bytes) -> tuple[int, int, bytes]:
     assert isinstance(maskbm, Bitmap)
     assert isinstance(bwiconbm, Bitmap)
     maskbits = u.read(maskbm.rowbytes * maskbm.height)
-    bwiconbits = u.read(bwiconbm.rowbytes * maskbm.height)
+    bwiconbits = u.read(bwiconbm.rowbytes * bwiconbm.height)
 
     mask8 = convert_to_8bit(maskbits, 1)
     bwicon8 = convert_to_8bit(bwiconbits, 1)
