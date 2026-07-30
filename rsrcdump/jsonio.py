@@ -14,7 +14,7 @@ class JSONEncoderBase16Fallback(json.JSONEncoder):
         if isinstance(o, bytes):
             return base64.b16encode(o).decode('ascii')
         else:
-            return JSONEncoderBase16Fallback(self, o)
+            return super().default(o)
 
 
 def resource_fork_to_json(
@@ -39,7 +39,11 @@ def resource_fork_to_json(
     errors = []
 
     for res_type, res_dir in fork.tree.items():
-        res_type_key = res_type.decode(get_global_encoding(), 'backslashreplace')
+        # Use the same encoding as the resource sub-directory name so the key
+        # round-trips through parse_type_name() on repack. Decoding the raw
+        # bytes here instead would not survive parse_type_name()'s unquote step
+        # for FourCCs containing high bytes or trailing spaces.
+        res_type_key = sanitize_type_name(res_type)
 
         if res_type in exclude_types:
             continue
@@ -132,7 +136,10 @@ def json_to_resource_fork(
     fork.junk_filerefnum = json_blob['_metadata']['junk2']
 
     for type_name, type_records in json_blob.items():
-        if len(type_name) > 4:  # probably metadata
+        # Skip the metadata block. (A plain length check would wrongly drop
+        # URL-encoded type keys such as "%A9icn", which are longer than 4
+        # characters yet decode back to a 4-byte FourCC.)
+        if type_name == "_metadata":
             continue
 
         res_type = parse_type_name(type_name)

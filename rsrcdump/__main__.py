@@ -179,8 +179,7 @@ def main():
             json_blob,
             converters=converters,
             only_types=only_types,
-            skip_types=skip_types,
-            encoding=args.encoding)
+            skip_types=skip_types)
 
         binary_fork = fork.pack()
 
